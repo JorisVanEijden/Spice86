@@ -95,7 +95,8 @@ public interface IGui {
     /// </summary>
     /// <param name="ram">The byte array of video data</param>
     /// <param name="rgbs">The byte array of palette data</param>
-    void Draw(byte[] ram, Rgb[] rgbs);
+    /// <param name="mode">The videomode to draw.</param>
+    void Draw(byte[] ram, Rgb[] rgbs, VideoMode10h mode);
 
     /// <summary>
     /// Indicates whether the LMB is down.

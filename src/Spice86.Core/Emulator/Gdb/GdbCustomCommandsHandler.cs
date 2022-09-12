@@ -353,7 +353,7 @@ Supported custom commands:
             // Actions for 1 parameter
             if ("refresh".Equals(action)) {
                 Memory memory = _machine.Memory;
-                gui?.Draw(memory.Ram, vgaCard.VgaDac.Rgbs);
+                gui?.Draw(memory.Ram, vgaCard.VgaDac.Rgbs, vgaCard.CurrentVideoMode);
                 return _gdbIo.GenerateResponse("");
             } else if ("list".Equals(action)) {
                 StringBuilder listBuilder = new StringBuilder();

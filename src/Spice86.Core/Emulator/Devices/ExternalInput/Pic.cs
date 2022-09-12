@@ -6,6 +6,8 @@ using Spice86.Core.Emulator.Errors;
 using Spice86.Core.Emulator.VM;
 using Spice86.Core.Utils;
 
+using System.Diagnostics;
+
 /// <summary>
 /// Emulates a PIC8259 Programmable Interrupt Controller.<br/>
 /// Some resources:
@@ -16,6 +18,11 @@ using Spice86.Core.Utils;
 /// </summary>
 public class Pic {
     private readonly ILogger _logger;
+
+    /// <summary>
+    /// The number of <see cref="System.Diagnostics.Stopwatch"/> timer ticks per millisecond.
+    /// </summary>
+    public static readonly long StopwatchTicksPerMillisecond = Stopwatch.Frequency / 1000;
 
     private readonly Machine _machine;
 

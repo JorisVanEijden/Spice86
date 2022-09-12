@@ -1,10 +1,6 @@
 ﻿
 namespace Spice86.Core.Emulator.Devices.Video;
 
-using Serilog;
-
-using Spice86.Core.Emulator.Devices.Video;
-
 using Spice86.Core.Emulator.VM;
 using Spice86.Shared;
 
@@ -39,13 +35,13 @@ public class VgaDac {
     public static byte From6bitColorTo8bit(byte color6bit) => (byte)((color6bit & 0b111111) << 2);
 
     /// <summary>
-    /// 0 = red, 1 = green, 2 = blue 
+    /// 0 = red, 1 = green, 2 = blue
     /// </summary>
     public int Colour { get; set; }
 
     public int ReadIndex { get; set; }
 
-    public Rgb[] Rgbs { get; private set; } = new Rgb[256];
+    public Rgb[] Rgbs { get; } = new Rgb[256];
 
     public int State { get; set; } = 1;
 

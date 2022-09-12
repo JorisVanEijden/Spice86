@@ -1,6 +1,4 @@
-﻿using Spice86.Core.DI;
-
-namespace Spice86.Core.Emulator.InterruptHandlers.Vga;
+namespace Spice86.Core.Emulator.InterruptHandlers.Video;
 
 using Serilog;
 

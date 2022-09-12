@@ -10,6 +10,8 @@ using Spice86.Core.Emulator.IOPorts;
 using Spice86.Core.Emulator;
 using Spice86.Core.Emulator.Memory;
 using Spice86.Core.Emulator.VM;
+using Spice86.Core.Emulator.Errors;
+using System.Linq;
 
 /// <summary>
 /// Implementation of VGA card, currently only supports mode 0x13.<br/>
@@ -29,7 +31,6 @@ public class VgaCard : DefaultIOPortHandler {
 
     public const byte MODE_320_200_256 = 0x13;
 
-    
     // Means the CRT is busy drawing a line, tells the program it should not draw
     private const byte StatusRegisterRetraceInactive = 0;
     // 4th bit is 1 when the CRT finished drawing and is returning to the beginning
@@ -41,7 +42,7 @@ public class VgaCard : DefaultIOPortHandler {
     // whole duration of the retrace to write to VRAM.
     // More info here: http://atrevida.comprenica.com/atrtut10.html
     private const byte StatusRegisterRetraceActive = 0b1000;
-    
+
     private readonly IGui? _gui;
     private byte _crtStatusRegister = StatusRegisterRetraceActive;
 
@@ -166,16 +167,29 @@ public class VgaCard : DefaultIOPortHandler {
         VgaDac.State = VgaDac.VgaDacWrite;
     }
 
+    public VideoMode10h CurrentVideoMode { get; private set; }
+
     public void SetVideoModeValue(byte mode) {
-        if (mode == MODE_320_200_256) {
-            const int videoHeight = 200;
-            const int videoWidth = 320;
-            _gui?.SetResolution(videoWidth, videoHeight, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-        } else {
+        if(!Enum.GetValues<VideoMode10h>().Select(static x => (byte)x).Contains(mode)) {
             if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Error)) {
                 _logger.Error("UNSUPPORTED VIDEO MODE {@VideMode}", mode);
             }
         }
+        VideoMode10h videoMode = (VideoMode10h)mode;
+        const int videoHeight = 200;
+        const int videoWidth = 320;
+        switch (CurrentVideoMode)
+        {
+            case VideoMode10h.ColorGraphics640x350x4:
+                _gui?.SetResolution(640, 350, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.Graphics320x200x8:
+                _gui?.SetResolution(videoWidth, videoHeight, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+            break;
+            default:
+                throw new UnrecoverableException($"Unimplemented video mode {CurrentVideoMode}");
+        }
+        CurrentVideoMode = videoMode;
     }
 
     public void TickRetrace() {
@@ -183,5 +197,7 @@ public class VgaCard : DefaultIOPortHandler {
         _crtStatusRegister = StatusRegisterRetraceInactive;
     }
 
-    public void UpdateScreen() => _gui?.Draw(_memory.Ram, VgaDac.Rgbs);
+    public void UpdateScreen() {
+        _gui?.Draw(_memory.Ram, VgaDac.Rgbs, CurrentVideoMode);
+    }
 }

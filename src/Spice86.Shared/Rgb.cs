@@ -3,7 +3,7 @@
 /// <summary>
 /// RGB representation of a color.
 /// </summary>
-public class Rgb {
+public record struct Rgb {
     public byte R { get; set; }
 
     public byte G { get; set; }
@@ -24,5 +24,9 @@ public class Rgb {
 
     public override string ToString() {
         return System.Text.Json.JsonSerializer.Serialize(this);
+    }
+
+    public static implicit operator uint(Rgb v) {
+        return v.ToRgba();
     }
 }

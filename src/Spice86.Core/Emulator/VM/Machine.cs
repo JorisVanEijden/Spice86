@@ -1,7 +1,8 @@
-﻿namespace Spice86.Core.Emulator.VM;
+﻿using Spice86.Core.DI;
+
+namespace Spice86.Core.Emulator.VM;
 
 using Spice86.Core.CLI;
-using Spice86.Core.DI;
 using Spice86.Core.Emulator;
 using Spice86.Core.Emulator.Callback;
 using Spice86.Core.Emulator.CPU;
@@ -20,9 +21,10 @@ using Spice86.Core.Emulator.InterruptHandlers.Input.Keyboard;
 using Spice86.Core.Emulator.InterruptHandlers.Input.Mouse;
 using Spice86.Core.Emulator.InterruptHandlers.SystemClock;
 using Spice86.Core.Emulator.InterruptHandlers.Timer;
-using Spice86.Core.Emulator.InterruptHandlers.Vga;
+using Spice86.Core.Emulator.InterruptHandlers.Video;
 using Spice86.Core.Emulator.IOPorts;
 using Spice86.Core.Emulator.Memory;
+using Spice86.Core.Emulator.Video.Modes;
 using Spice86.Shared.Interfaces;
 
 using System;
@@ -41,6 +43,12 @@ public class Machine : IDisposable {
     private bool _exitDmaLoop = false;
     private bool _dmaThreadStarted = false;
     private readonly ManualResetEvent _dmaResetEvent = new(true);
+
+    private readonly ExpandedMemoryManager emm;
+    private readonly ExtendedMemoryManager xmm;
+
+    internal ExtendedMemoryManager ExtendedMemory => this.xmm;
+
 
     private bool _disposed;
 
@@ -113,6 +121,8 @@ public class Machine : IDisposable {
 
     public Configuration Configuration { get; }
 
+    public VideoHandler Video { get; }
+
     public Machine(ProgramExecutor programExecutor, IGui? gui, IKeyScanCodeConverter? keyScanCodeConverter, CounterConfigurator counterConfigurator, ExecutionFlowRecorder executionFlowRecorder, Configuration configuration, bool recordData) {
         _programExecutor = programExecutor;
         Configuration = configuration;
@@ -120,8 +130,17 @@ public class Machine : IDisposable {
         RecordData = recordData;
         var serviceProvider = new ServiceProvider();
 
-        Memory = new Memory(sizeInKb: (uint)Configuration.Kilobytes);
+        // A full 8MB of addressable memory :)
+        Memory = new Memory(this, (uint)Configuration.Kilobytes < 0x800000 ? 0x800000 : (uint)Configuration.Kilobytes);
+
+
         Cpu = new Cpu(this, new ServiceProvider().GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
+        Video = new VideoHandler(this);
+        xmm = new(this);
+        emm = new(this);
+        Memory.Video = this.Video;
+        Memory.Ems = emm;
+        Cpu = new Cpu(this, serviceProvider.GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
 
         // Breakpoints
         MachineBreakpoints = new MachineBreakpoints(this);
@@ -198,7 +217,35 @@ public class Machine : IDisposable {
         _dmaThread = new Thread(DmaLoop) {
             Name = "DMAThread"
         };
+        EndInitialization();
     }
+
+    public VideoMode? VideoMode { get; internal set; }
+
+    /// <summary>
+    /// Raises the VideoModeChanged event.
+    /// </summary>
+    /// <param name="e">Empty EventArgs instance.</param>
+    internal void OnVideoModeChanged(EventArgs e)
+    {
+        this.VideoModeChanged?.Invoke(this, e);
+
+        VideoMode? mode = this.VideoMode;
+        if (mode != null) {
+            this.IsCursorVisible = mode.HasCursor;
+        }
+    }
+
+    /// <summary>
+    /// Occurs when the emulated display mode has changed.
+    /// </summary>
+    public event EventHandler? VideoModeChanged;
+
+    /// <summary>
+    /// Informs the VirtualMachine instance that initialization is complete and no more devices will be added.
+    /// This must be called prior to emulation.
+    /// </summary>
+    public void EndInitialization() => this.Memory.ReserveBaseMemory();
 
     /// <summary>
     /// https://techgenix.com/direct-memory-access/
@@ -294,6 +341,7 @@ public class Machine : IDisposable {
     }
 
     public bool IsPaused { get; private set; }
+    public bool IsCursorVisible { get; internal set; }
 
     private bool _exitEmulationLoop = false;
 

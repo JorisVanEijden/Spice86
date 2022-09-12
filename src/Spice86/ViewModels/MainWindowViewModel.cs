@@ -234,13 +234,13 @@ public sealed partial class MainWindowViewModel : ObservableObject, IGui, IDispo
 
     public ReadOnlyCollection<Rgb> Palette => Array.AsReadOnly(_palette);
 
-    public void Draw(byte[] memory, Rgb[] palette) {
+    public void Draw(byte[] memory, Rgb[] palette, VideoMode10h videoMode) {
         if (_disposed || _isSettingResolution) {
             return;
         }
         _palette = palette;
         foreach (VideoBufferViewModel videoBuffer in SortedBuffers()) {
-            videoBuffer.Draw(memory, palette);
+            videoBuffer.Draw(memory, palette, videoMode);
         }
     }
 

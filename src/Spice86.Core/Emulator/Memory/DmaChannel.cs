@@ -178,7 +178,7 @@ public sealed class DmaChannel {
     /// <summary>
     /// Performs a DMA transfer.
     /// </summary>
-    /// <param name="memory">Current PhysicalMemory instance.</param>
+    /// <param name="memory">Current Memory instance.</param>
     /// <remarks>
     /// This method should only be called if the channel is active.
     /// </remarks>

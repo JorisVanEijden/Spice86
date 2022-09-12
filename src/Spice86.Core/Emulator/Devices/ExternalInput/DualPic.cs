@@ -5,6 +5,8 @@ using Spice86.Core.Emulator.Errors;
 using Spice86.Core.Emulator.IOPorts;
 using Spice86.Core.Emulator.VM;
 
+using System.Diagnostics;
+
 public class DualPic : DefaultIOPortHandler {
     private const int MasterCommand = 0x20;
 
@@ -24,6 +26,43 @@ public class DualPic : DefaultIOPortHandler {
 
     private readonly Pic _pic1;
     private readonly Pic _pic2;
+
+    /// <summary>
+    /// Gets the current value of the system performance counter.
+    /// </summary>
+    public static long GlobalTimerTicks => Stopwatch.GetTimestamp();
+
+    /// <summary>
+    /// The number of <see cref="System.Diagnostics.Stopwatch"/> timer ticks per millisecond.
+    /// </summary>
+    public static readonly long StopwatchTicksPerMillisecond = Stopwatch.Frequency / 1000;
+
+    private static readonly double TimeSpanToStopwatchMultiplier = StopwatchTicksPerMillisecond / (double)TimeSpan.TicksPerMillisecond;
+
+    /// <summary>
+    /// Returns a value indicating whether the real time clock is in the specified state.
+    /// </summary>
+    /// <param name="interval">Interval within the period in stopwatch ticks.</param>
+    /// <param name="period">Length of the period in stopwatch ticks.</param>
+    /// <returns>True if the clock is in the specified state; otherwise false.</returns>
+    public static bool IsInRealtimeInterval(long interval, long period)
+    {
+        long ticks = GlobalTimerTicks;
+        return (ticks % period) < interval;
+    }
+    /// <summary>
+    /// Returns a value indicating whether the real time clock is in the specified state.
+    /// </summary>
+    /// <param name="interval">Interval within the period.</param>
+    /// <param name="period">Length of the period.</param>
+    /// <returns>True if the clock is in the specified state; otherwise false.</returns>
+    public static bool IsInRealtimeInterval(TimeSpan interval, TimeSpan period)
+    {
+        long ticks = GlobalTimerTicks;
+        long intervalTicks = (long)(TimeSpanToStopwatchMultiplier * interval.Ticks);
+        long periodTicks = (long)(TimeSpanToStopwatchMultiplier * period.Ticks);
+        return (ticks % periodTicks) < intervalTicks;
+    }
 
     public DualPic(Machine machine, Configuration configuration) : base(machine, configuration) {
         _pic1 = new Pic(machine, new ServiceProvider().GetLoggerForContext<Pic>(), true);

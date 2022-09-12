@@ -11,12 +11,13 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
-using Spice86.Views;
 using Spice86.Shared;
 using Spice86.Shared.Interfaces;
+using Spice86.Views;
 
 using System;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 /// <inheritdoc />
@@ -140,7 +141,7 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
     private int _width = 200;
 
     [ObservableProperty]
-    private long _framesRendered;
+    private long _framesRendered = 0;
 
     private bool _appClosing;
 
@@ -166,50 +167,182 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
 
     private Action? _drawAction;
 
-    public unsafe void Draw(byte[] memory, Rgb[] palette) {
-        if (_appClosing || _disposedValue || UIUpdateMethod is null || Bitmap is null) {
+    private VideoMode10h _lastUsedVideoMode = VideoMode10h.Text80x25x1;
+
+    public unsafe void Draw(byte[] memory, Rgb[] palette, VideoMode10h videoMode) {
+        if (_appClosing || _disposedValue || UIUpdateMethod is null) {
             return;
         }
+        StartDrawThreadIfNeeded();
+        if (_drawAction is null || _lastUsedVideoMode != videoMode) {
+            _lastUsedVideoMode = videoMode;
+            _drawAction = new Action(() => {
+                switch (videoMode) {
+                    case VideoMode10h.ColorGraphics640x350x4:
+                        DrawVga640x350x4(memory, palette);
+                        break;
+                    case VideoMode10h.Graphics320x200x8:
+                        DrawVga320x200x8(memory, palette);
+                        break;
+                    default:
+                        break;
+                }
+                UpdateGui();
+            });
+        }
+        WaitForNextCall();
+    }
+
+    private unsafe void WaitForNextCall() {
+        if (!_exitDrawThread) {
+            _manualResetEvent.Set();
+            _manualResetEvent.Reset();
+        }
+    }
+
+    private unsafe void StartDrawThreadIfNeeded() {
         if (_drawThread is null) {
             _drawThread = new Thread(DrawThreadMethod) {
                 Name = "UIRenderThread"
             };
             _drawThread.Start();
         }
-        _drawAction ??= () => {
-            _frameRenderTimeWatch.Restart();
-            using ILockedFramebuffer pixels = Bitmap.Lock();
-            uint* firstPixelAddress = (uint*)pixels.Address;
-            int rowBytes = Width;
-            uint memoryAddress = Address;
-            uint* currentRow = firstPixelAddress;
-            for (int row = 0; row < Height; row++) {
-                uint* startOfLine = currentRow;
-                uint* endOfLine = currentRow + Width;
-                for (uint* column = startOfLine; column < endOfLine; column++) {
-                    byte colorIndex = memory[memoryAddress];
-                    Rgb pixel = palette[colorIndex];
-                    uint argb = pixel.ToArgb();
-                    if (pixels.Format == PixelFormat.Rgba8888) {
-                        argb = pixel.ToRgba();
-                    }
-                    *column = argb;
-                    memoryAddress++;
-                }
-                currentRow += rowBytes;
-            }
+    }
 
-            Dispatcher.UIThread.Post(() => {
-                UIUpdateMethod?.Invoke();
-                FramesRendered++;
-            }, DispatcherPriority.Render);
-            _frameRenderTimeWatch.Stop();
-            LastFrameRenderTimeMs = _frameRenderTimeWatch.ElapsedMilliseconds;
-        };
-        if(!_exitDrawThread) {
-            _manualResetEvent.Set();
-            _manualResetEvent.Reset();
+    private unsafe void DrawVga640x350x4(byte[] memory, Rgb[] palette) {
+        if (Bitmap is null) {
+            return;
         }
+        _frameRenderTimeWatch.Restart();
+        ILockedFramebuffer pixels = Bitmap.Lock();
+        const int width = 640;
+        const int height = 350;
+
+        uint* firstPixelAddress = (uint*)pixels.Address;
+        const int stride = 80;
+        const int horizontalPan = 0;
+        const int startOffset = 0;
+
+        int safeWidth = Math.Min(stride, width / 8);
+        const int bitPan = horizontalPan % 8;
+
+        Span<byte> src = new Span<byte>(memory);
+        uint* destPtr = firstPixelAddress;
+
+        Span<Rgb> paletteSpan = new Span<Rgb>(palette);
+        fixed (byte* srcPtr = src) {
+            fixed (Rgb* paletteMap = paletteSpan) {
+                const int destStart = 0;
+
+                for (int split = 0; split < 2; split++) {
+                    for (int y = 0; y < height; y++) {
+                        int srcPos = ((stride * y) + startOffset + (horizontalPan / 8)) & 0xFFFF;
+                        int destPos = (width * y) + destStart;
+
+                        for (int i = bitPan; i < 8; i++)
+                            destPtr[destPos++] = palette[paletteMap[UnpackIndex(srcPtr[srcPos], 7 - i)]];
+
+                        srcPos++;
+
+                        for (int xb = 1; xb < safeWidth; xb++) {
+                            // vram is stored as:
+                            // [p1byte] [p2byte] [p3byte] [p4byte]
+                            // to build index for nibble one:
+                            // p1[0] p2[0] p3[0] p4[0]
+
+                            uint p = srcPtr[srcPos & 0xFFFF];
+                            int palIndex = UnpackIndex(p, 0);
+                            destPtr[destPos + 7] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 1);
+                            destPtr[destPos + 6] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 2);
+                            destPtr[destPos + 5] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 3);
+                            destPtr[destPos + 4] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 4);
+                            destPtr[destPos + 3] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 5);
+                            destPtr[destPos + 2] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 6);
+                            destPtr[destPos + 1] = palette[paletteMap[palIndex]];
+
+                            palIndex = UnpackIndex(p, 7);
+                            destPtr[destPos] = palette[paletteMap[palIndex]];
+
+                            destPos += 8;
+                            srcPos++;
+                        }
+
+                        srcPos &= 0xFFFF;
+
+                        for (int i = 0; i < bitPan; i++)
+                            destPtr[destPos++] = palette[paletteMap[UnpackIndex(srcPtr[srcPos], 7 - i)]];
+                    }
+
+                    // if (height < this.VideoMode.Height)
+                    // {
+                    //     startOffset = 0;
+                    //     height = this.VideoMode.Height - this.VideoMode.LineCompare - 1;
+                    //     destStart = this.VideoMode.LineCompare * width;
+                    // }
+                    // else
+                    // {
+                    //     break;
+                    // }
+                }
+            }
+        }
+    }
+
+    // it's important for this to get inlined
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int UnpackIndex(uint value, int index) {
+        if (System.Runtime.Intrinsics.X86.Bmi2.IsSupported)
+            return (int)System.Runtime.Intrinsics.X86.Bmi2.ParallelBitExtract(value, 0x01010101u << index);
+        else
+            return (int)(((value & (1u << index)) >> index) | ((value & (0x100u << index)) >> (7 + index)) | ((value & (0x10000u << index)) >> (14 + index)) | ((value & (0x1000000u << index)) >> (21 + index)));
+    }
+
+    private unsafe void DrawVga320x200x8(byte[] memory, Rgb[] palette) {
+        if (Bitmap is null) {
+            return;
+        }
+        _frameRenderTimeWatch.Restart();
+        ILockedFramebuffer pixels = Bitmap.Lock();
+        uint* firstPixelAddress = (uint*)pixels.Address;
+        int rowBytes = Width;
+        uint memoryAddress = Address;
+        uint* currentRow = firstPixelAddress;
+        for (int row = 0; row < Height; row++) {
+            uint* startOfLine = currentRow;
+            uint* endOfLine = currentRow + Width;
+            for (uint* column = startOfLine; column < endOfLine; column++) {
+                byte colorIndex = memory[memoryAddress];
+                Rgb pixel = palette[colorIndex];
+                uint argb = pixel.ToArgb();
+                if (pixels.Format == PixelFormat.Rgba8888) {
+                    argb = pixel.ToRgba();
+                }
+                *column = argb;
+                memoryAddress++;
+            }
+            currentRow += rowBytes;
+        }
+    }
+
+    private void UpdateGui() {
+        Dispatcher.UIThread.Post(() => {
+            UIUpdateMethod?.Invoke();
+            FramesRendered++;
+        }, DispatcherPriority.Render);
+        _frameRenderTimeWatch.Stop();
+        LastFrameRenderTimeMs = _frameRenderTimeWatch.ElapsedMilliseconds;
     }
 
     [ObservableProperty]
