@@ -104,6 +104,8 @@ public class Machine : IDisposable {
     public EnvironmentVariables EnvironmentVariables { get; } = new EnvironmentVariables();
     public OPL3FM OPL3FM { get; }
 
+    public AdlibGold AdlibGold { get; }
+
     public event Action? Paused;
 
     public event Action? Resumed;
@@ -146,11 +148,17 @@ public class Machine : IDisposable {
         Register(Joystick);
         PcSpeaker = new PcSpeaker(this, serviceProvider.GetService<ILoggerService>(), configuration);
         Register(PcSpeaker);
-        OPL3FM = new OPL3FM(this, configuration);
-        Register(OPL3FM);
-        SoundBlaster = new SoundBlaster(this, configuration);
-        Register(SoundBlaster);
-        SoundBlaster.AddEnvironnmentVariable();
+        if (configuration.SynthMode == "g") {
+            AdlibGold = new AdlibGold(this, configuration);
+            Register(AdlibGold);
+        }
+        else {
+            OPL3FM = new OPL3FM(this, configuration);
+            Register(OPL3FM);
+            SoundBlaster = new SoundBlaster(this, configuration);
+            Register(SoundBlaster);
+            SoundBlaster.AddEnvironnmentVariable();
+        }
         GravisUltraSound = new GravisUltraSound(this, configuration);
         Register(GravisUltraSound);
         Midi = new Midi(this, configuration);

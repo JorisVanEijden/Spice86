@@ -6,6 +6,9 @@ using Spice86.Core.Emulator.Function;
 
 /// <summary> Configuration for spice86, that is what to run and how. Set on startup. </summary>
 public class Configuration {
+    [Option('s', nameof(SynthMode), Default = null, Required = false, HelpText = "FM Synth mode. Defaults to the Sound Blaster 16's OPL chip emulation. Use 'g' for Adlib Gold mode.")]
+    public string? SynthMode { get; init; }
+
     [Option('c', nameof(CDrive), Default = null, Required = false, HelpText = "Path to C drive, default is exe parent")]
     public string? CDrive { get; set; }
 
