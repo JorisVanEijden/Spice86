@@ -175,11 +175,14 @@ public class VgaCard : DefaultIOPortHandler {
                 _logger.Error("UNSUPPORTED VIDEO MODE {@VideMode}", mode);
             }
         }
-        VideoMode10h videoMode = (VideoMode10h)mode;
+        CurrentVideoMode = (VideoMode10h)mode;
         const int videoHeight = 200;
         const int videoWidth = 320;
         switch (CurrentVideoMode)
         {
+            case VideoMode10h.Text40x25x1:
+                _gui?.SetResolution(40, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
             case VideoMode10h.ColorGraphics640x350x4:
                 _gui?.SetResolution(640, 350, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
@@ -189,7 +192,6 @@ public class VgaCard : DefaultIOPortHandler {
             default:
                 throw new UnrecoverableException($"Unimplemented video mode {CurrentVideoMode}");
         }
-        CurrentVideoMode = videoMode;
     }
 
     public void TickRetrace() {

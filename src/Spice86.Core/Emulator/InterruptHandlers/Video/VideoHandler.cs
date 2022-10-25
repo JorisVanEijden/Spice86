@@ -54,8 +54,8 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
         InitializeStaticFunctionalityTable();
 
         this.TextConsole = new TextConsole(this, machine.Memory.Bios);
-        CurrentMode = new Emulator.Video.Modes.TextMode(40, 25, 8, this);
-        this.SetDisplayMode(VideoMode10h.ColorText80x25x4);
+        CurrentMode = new Emulator.Video.Modes.Vga256(320, 200, this);
+        this.SetDisplayMode(VideoMode10h.Graphics320x200x8);
     }
 
     ~VideoHandler() => this.Dispose();
@@ -552,8 +552,9 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
         mode.InitializeMode(this);
         Graphics.WriteRegister(GraphicsRegister.ColorDontCare, 0x0F);
 
-        if (this.defaultPaletteLoading)
+        if (this.defaultPaletteLoading) {
             Dac.Reset();
+        }
 
         VirtualMachine.OnVideoModeChanged(EventArgs.Empty);
     }
