@@ -77,8 +77,9 @@ public class TextConsole
     /// </summary>
     public void Clear()
     {
-        if (this.video.CurrentMode is Modes.TextMode mode)
+        if (this.video.CurrentMode is Modes.TextMode mode) {
             mode.Clear();
+        }
 
         this.CursorPosition = new Point(0, 0);
     }
@@ -90,8 +91,9 @@ public class TextConsole
     /// <param name="height">Height of the rectangle to clear.</param>
     public void Clear(Point offset, int width, int height)
     {
-        if (this.video.CurrentMode is Modes.TextMode mode)
+        if (this.video.CurrentMode is Modes.TextMode mode) {
             mode.Clear(offset, width, height);
+        }
     }
     /// <summary>
     /// Copies a block of text in the console from one location to another
@@ -103,8 +105,9 @@ public class TextConsole
     /// <param name="height">Height of rectangle to copy.</param>
     public void MoveBlock(Point sourceOffset, Point destinationOffset, int width, int height, ushort background)
     {
-        if (this.video.CurrentMode is Modes.TextMode mode)
+        if (this.video.CurrentMode is Modes.TextMode mode) {
             mode.MoveBlock(sourceOffset, destinationOffset, width, height, 0, 0);
+        }
     }
     /// <summary>
     /// Writes a byte to the console.
@@ -112,10 +115,11 @@ public class TextConsole
     /// <param name="b">Byte to write to the console.</param>
     public void Write(byte b)
     {
-        if (this.AnsiEnabled && (b == ansiEscape || this.ansiCommand.Length > 0))
+        if (this.AnsiEnabled && (b == ansiEscape || this.ansiCommand.Length > 0)) {
             this.WriteAnsiCommand((char)b);
-        else
+        } else {
             this.WriteByte(b, this.ForegroundColor, this.BackgroundColor, true);
+        }
     }
     public void Write(byte b, byte foreground, byte background, bool advanceCursor) => this.WriteByte(b, foreground, background, advanceCursor);
     /// <summary>
@@ -126,8 +130,9 @@ public class TextConsole
     {
         if (this.AnsiEnabled)
         {
-            foreach (char c in s)
+            foreach (char c in s) {
                 this.Write((byte)c);
+            }
         }
         else
         {
@@ -146,8 +151,9 @@ public class TextConsole
     /// <param name="foreground">Foreground color to fill in bottom rows.</param>
     public void ScrollTextUp(int x1, int y1, int x2, int y2, int lines, byte foreground, byte background)
     {
-        if (this.video.CurrentMode is Modes.TextMode mode)
+        if (this.video.CurrentMode is Modes.TextMode mode) {
             mode.ScrollUp(x1, y1, x2, y2, lines, (byte)(foreground | (background << 4)));
+        }
     }
     /// <summary>
     /// Returns the character at the specified coordinates.
@@ -157,16 +163,18 @@ public class TextConsole
     /// <returns>Character and attribute at this specified position.</returns>
     public ushort GetCharacter(int x, int y)
     {
-        if (this.video.CurrentMode is Modes.TextMode mode)
+        if (this.video.CurrentMode is Modes.TextMode mode) {
             return mode.GetCharacter(x, y);
-        else
+        } else {
             return 0;
+        }
     }
     public void SetCursorPosition(int offset)
     {
         var p = new Point(offset % this.Width, offset / this.Width);
-        if (p != this.CursorPosition)
+        if (p != this.CursorPosition) {
             this.CursorPosition = p;
+        }
     }
 
     /// <summary>
@@ -186,8 +194,9 @@ public class TextConsole
     /// <param name="advanceCursor">Value indicating whether the cursor should be automatically advanced after writing the character.</param>
     private void WriteString(string s, byte foreground, byte background, bool advanceCursor)
     {
-        foreach (char c in s)
+        foreach (char c in s) {
             this.WriteCharacter(c, foreground, background, advanceCursor);
+        }
     }
     /// <summary>
     /// Writes a character to the console performing bounds checking and
@@ -223,8 +232,9 @@ public class TextConsole
             {
                 if (c == 8 && advanceCursor)
                 {
-                    if (cursorPos.X > 0)
+                    if (cursorPos.X > 0) {
                         cursorPos.X--;
+                    }
 
                     this.SendToProvider(cursorPos.X, cursorPos.Y, 0, foreground, background);
                 }
@@ -244,8 +254,9 @@ public class TextConsole
                 }
             }
 
-            if (advanceCursor)
+            if (advanceCursor) {
                 this.CursorPosition = cursorPos;
+            }
         }
     }
 
@@ -265,8 +276,9 @@ public class TextConsole
         }
         else
         {
-            if (c >= 0x40 && c <= 0x7E)
+            if (c >= 0x40 && c <= 0x7E) {
                 this.ParseAnsiCommand();
+            }
         }
     }
     private void ParseAnsiCommand()
@@ -276,8 +288,9 @@ public class TextConsole
 
         commandBody = commandBody[0..^1];
         string[]? commandArgs = null;
-        if (commandBody.Length > 0)
+        if (commandBody.Length > 0) {
             commandArgs = commandBody.Split(new char[] { ';' }, StringSplitOptions.None);
+        }
 
         switch (commandCode)
         {
@@ -347,8 +360,9 @@ public class TextConsole
 
         if (args?.Length >= 1)
         {
-            if (!int.TryParse(args[0].Trim(), out offset))
+            if (!int.TryParse(args[0].Trim(), out offset)) {
                 offset = 1;
+            }
         }
 
         Point pos = this.CursorPosition;
@@ -379,8 +393,9 @@ public class TextConsole
 
         if (args?.Length > 0)
         {
-            if (!int.TryParse(args[0].Trim(), out offset))
+            if (!int.TryParse(args[0].Trim(), out offset)) {
                 offset = 1;
+            }
         }
 
         Point pos = this.CursorPosition;
@@ -403,10 +418,11 @@ public class TextConsole
         int column = 0;
         if (args?.Length > 0)
         {
-            if (int.TryParse(args[0].Trim(), out column))
+            if (int.TryParse(args[0].Trim(), out column)) {
                 column--;
-            else
+            } else {
                 column = 0;
+            }
         }
 
         Point pos = this.CursorPosition;
@@ -420,17 +436,19 @@ public class TextConsole
 
         if (args?.Length > 0)
         {
-            if (int.TryParse(args[0].Trim(), out row))
+            if (int.TryParse(args[0].Trim(), out row)) {
                 row--;
-            else
+            } else {
                 row = 0;
+            }
 
             if (args.Length > 1)
             {
-                if (int.TryParse(args[1].Trim(), out column))
+                if (int.TryParse(args[1].Trim(), out column)) {
                     column--;
-                else
+                } else {
                     column = 0;
+                }
             }
         }
 

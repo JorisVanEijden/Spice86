@@ -122,8 +122,9 @@ internal class Scale3x : Scaler
                         dVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3] = o1[j];
+                    }
 
                     var o2 = Vector.ConditionalSelect(
                         Vector.BitwiseOr(
@@ -133,16 +134,18 @@ internal class Scale3x : Scaler
                         bVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + 1] = o2[j];
+                    }
 
                     var o3 = Vector.ConditionalSelect(
                         Vector.AndNot(Vector.AndNot(Vector.Equals(bVec[i], fVec[i]), Vector.Equals(bVec[i], dVec[i])), Vector.Equals(fVec[i], hVec[i])),
                         fVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + 2] = o3[j];
+                    }
 
                     var o4 = Vector.ConditionalSelect(
                         Vector.BitwiseOr(
@@ -152,12 +155,14 @@ internal class Scale3x : Scaler
                         dVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + destPitch] = o4[j];
+                    }
 
                     Vector<uint> o5 = eVec[i];
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + destPitch + 1] = o5[j];
+                    }
 
                     var o6 = Vector.ConditionalSelect(
                         Vector.BitwiseOr(
@@ -167,16 +172,18 @@ internal class Scale3x : Scaler
                         fVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + destPitch + 2] = o6[j];
+                    }
 
                     var o7 = Vector.ConditionalSelect(
                         Vector.AndNot(Vector.AndNot(Vector.Equals(hVec[i], dVec[i]), Vector.Equals(hVec[i], fVec[i])), Vector.Equals(dVec[i], bVec[i])),
                         dVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + destPitch + destPitch] = o7[j];
+                    }
 
                     var o8 = Vector.ConditionalSelect(
                         Vector.BitwiseOr(
@@ -186,16 +193,18 @@ internal class Scale3x : Scaler
                         hVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + destPitch + destPitch + 1] = o8[j];
+                    }
 
                     var o9 = Vector.ConditionalSelect(
                         Vector.AndNot(Vector.AndNot(Vector.Equals(fVec[i], hVec[i]), Vector.Equals(fVec[i], bVec[i])), Vector.Equals(hVec[i], dVec[i])),
                         fVec[i],
                         eVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 3 + destPitch + destPitch + 2] = o9[j];
+                    }
 
                     destIndex += Vector<uint>.Count * 3;
                     srcIndex += Vector<uint>.Count;
@@ -236,31 +245,39 @@ internal class Scale3x : Scaler
         uint o8 = o1;
         uint o9 = o1;
 
-        if (d == b && d != h && b != f)
+        if (d == b && d != h && b != f) {
             o1 = d;
+        }
 
-        if ((d == b && d != h && b != f && e != c) || (b == f && b != d && f != h && e != a))
+        if ((d == b && d != h && b != f && e != c) || (b == f && b != d && f != h && e != a)) {
             o2 = b;
+        }
 
-        if (b == f && b != d && f != h)
+        if (b == f && b != d && f != h) {
             o3 = f;
+        }
 
-        if ((h == d && h != f && d != b && e != a) || (d == b && d != h && b != f && e != g))
+        if ((h == d && h != f && d != b && e != a) || (d == b && d != h && b != f && e != g)) {
             o4 = d;
+        }
 
         o5 = e;
 
-        if ((b == f && b != d && f != h && e != i) || (f == h && f != b && h != d && e != c))
+        if ((b == f && b != d && f != h && e != i) || (f == h && f != b && h != d && e != c)) {
             o6 = f;
+        }
 
-        if (h == d && h != f && d != b)
+        if (h == d && h != f && d != b) {
             o7 = d;
+        }
 
-        if ((f == h && f != b && h != d && e != g) || (h == d && h != f && d != b && e != i))
+        if ((f == h && f != b && h != d && e != g) || (h == d && h != f && d != b && e != i)) {
             o8 = h;
+        }
 
-        if (f == h && f != b && h != d)
+        if (f == h && f != b && h != d) {
             o9 = f;
+        }
 
         pdest[destIndex] = o1;
         pdest[destIndex + 1] = o2;

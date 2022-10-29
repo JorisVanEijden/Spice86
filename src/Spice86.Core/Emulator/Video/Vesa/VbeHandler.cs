@@ -67,19 +67,23 @@ internal sealed class VbeHandler : IDeviceCallbackProvider
                 break;
 
             case VesaFunctions.MemoryWindowControl:
-                if (vm.Cpu.State.BH == 0)
+                if (vm.Cpu.State.BH == 0) {
                     SetWindowPosition((ushort)vm.Cpu.State.DX);
-                else if (vm.Cpu.State.BH == 1)
+                } else if (vm.Cpu.State.BH == 1) {
                     GetWindowPosition();
-                else
+                } else {
                     throw new InvalidOperationException();
+                }
+
                 break;
 
             case VesaFunctions.DisplayStartControl:
-                if (vm.Cpu.State.BH == 0)
+                if (vm.Cpu.State.BH == 0) {
                     SetDisplayStart(vm.Cpu.State.CX, vm.Cpu.State.DX);
-                else
+                } else {
                     throw new InvalidOperationException();
+                }
+
                 break;
 
             default:
@@ -97,12 +101,13 @@ internal sealed class VbeHandler : IDeviceCallbackProvider
     /// </summary>
     public void InvokeCallback()
     {
-        if (vm.Cpu.State.BH == 0)
+        if (vm.Cpu.State.BH == 0) {
             SetWindowPosition((ushort)vm.Cpu.State.DX);
-        else if (vm.Cpu.State.BH == 1)
+        } else if (vm.Cpu.State.BH == 1) {
             GetWindowPosition();
-        else
+        } else {
             throw new InvalidOperationException();
+        }
     }
 
     /// <summary>
@@ -131,8 +136,9 @@ internal sealed class VbeHandler : IDeviceCallbackProvider
             if (isVbe2)
             {
                 byte* ptr = (byte*)infoBlock;
-                for (int i = 0; i < 512; i++)
+                for (int i = 0; i < 512; i++) {
                     ptr[i] = 0;
+                }
 
                 modeListOffset += (uint)sizeof(VbeInfoBlock);
                 oemStringOffset += 256;
@@ -182,8 +188,9 @@ internal sealed class VbeHandler : IDeviceCallbackProvider
             var modeInfo = (ModeInfoBlock*)vm.Memory.GetPointer(vm.Cpu.State.ES, vm.Cpu.State.DI).ToPointer();
 
             byte* buffer = (byte*)modeInfo;
-            for (int i = 0; i < 256; i++)
+            for (int i = 0; i < 256; i++) {
                 buffer[i] = 0;
+            }
 
             modeInfo->ModeAttributes = ModeAttributes.Supported | ModeAttributes.Reserved1 | ModeAttributes.Color | ModeAttributes.Graphics | ModeAttributes.LinearFrameBuffer;
             modeInfo->WinAAtrributes = WindowAttributes.Supported | WindowAttributes.Readable | WindowAttributes.Writeable;
@@ -248,8 +255,9 @@ internal sealed class VbeHandler : IDeviceCallbackProvider
     /// </summary>
     private void GetWindowPosition()
     {
-        if (this.windowedMode == null)
+        if (this.windowedMode == null) {
             throw new InvalidOperationException();
+        }
 
         vm.Cpu.State.DX = (ushort)this.windowedMode.WindowPosition;
         vm.Cpu.State.AH = 0;

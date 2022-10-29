@@ -32,12 +32,14 @@ internal sealed class MetaAllocator
     /// <returns>Starting segment of the requested block of memory.</returns>
     public ushort Allocate(ushort minimumSegment, int bytes)
     {
-        if (bytes <= 0)
+        if (bytes <= 0) {
             throw new ArgumentOutOfRangeException("bytes");
+        }
 
         uint paragraphs = (uint)(bytes >> 4);
-        if ((bytes % 16) != 0)
+        if ((bytes % 16) != 0) {
             paragraphs++;
+        }
 
         lock (this.allocations)
         {
@@ -64,11 +66,14 @@ internal sealed class MetaAllocator
             var newFreeBlockB = new Allocation((ushort)(providedSegment + paragraphs), freeBlock.Length - newFreeBlockA.Length - paragraphs, false);
 
             var newBlocks = new List<Allocation>(3);
-            if (newFreeBlockA.Length > 0)
+            if (newFreeBlockA.Length > 0) {
                 newBlocks.Add(newFreeBlockA);
+            }
+
             newBlocks.Add(newUsedBlock);
-            if (newFreeBlockB.Length > 0)
+            if (newFreeBlockB.Length > 0) {
                 newBlocks.Add(newFreeBlockB);
+            }
 
             this.allocations.Replace(freeBlock, newBlocks.ToArray());
 
@@ -96,11 +101,13 @@ internal sealed class MetaAllocator
     /// <returns>True if allocation is acceptable; otherwise false.</returns>
     private static bool InRange(Allocation a, ushort segment, uint length)
     {
-        if (a.Segment + a.Length >= segment + length)
+        if (a.Segment + a.Length >= segment + length) {
             return true;
+        }
 
-        if (a.Segment >= segment && a.Length >= length)
+        if (a.Segment >= segment && a.Length >= length) {
             return true;
+        }
 
         return false;
     }
@@ -138,8 +145,9 @@ internal sealed class MetaAllocator
 
         public bool Equals(Allocation? other)
         {
-            if (other == null)
+            if (other == null) {
                 return false;
+            }
 
             return this.Segment == other.Segment && this.IsUsed == other.IsUsed && this.Length == other.Length;
         }

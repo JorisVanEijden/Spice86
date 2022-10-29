@@ -200,8 +200,9 @@ public abstract class VideoMode {
 
         unsafe {
             byte* ptr = (byte*)VideoRam.ToPointer();
-            for (int i = 0; i < VideoHandler.TotalVramBytes; i++)
+            for (int i = 0; i < VideoHandler.TotalVramBytes; i++) {
                 ptr[i] = 0;
+            }
         }
 
         int stride;
@@ -213,10 +214,11 @@ public abstract class VideoMode {
         } else {
             video.TextConsole.Width = Width / 8;
             video.TextConsole.Height = Height / FontHeight;
-            if (BitsPerPixel < 8)
+            if (BitsPerPixel < 8) {
                 stride = Width / 8;
-            else
+            } else {
                 stride = Width;
+            }
         }
 
         crtController.Overflow = 1 << 4;

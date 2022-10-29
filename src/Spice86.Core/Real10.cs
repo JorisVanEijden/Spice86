@@ -62,17 +62,21 @@ public struct Real10 {
                 // Drop the lowest 11 bits from the mantissa.
                 mantissa >>= 11;
 
-                if (exponent == 0)
+                if (exponent == 0) {
                     return 0.0;
+                }
 
                 if (exponent == 0x7FFF) //+infinity, -infinity or nan
                 {
-                    if (mantissa != 0)
+                    if (mantissa != 0) {
                         return double.NaN;
-                    if (sign == 0)
+                    }
+
+                    if (sign == 0) {
                         return double.PositiveInfinity;
-                    else
+                    } else {
                         return double.NegativeInfinity;
+                    }
                 }
 
                 exponent -= 0x3FFF - 0x3FF;
@@ -98,12 +102,13 @@ public struct Real10 {
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static Real10 FromDouble(double value) {
-        if (double.IsPositiveInfinity(value))
+        if (double.IsPositiveInfinity(value)) {
             return PositiveInfinity;
-        else if (double.IsNegativeInfinity(value))
+        } else if (double.IsNegativeInfinity(value)) {
             return NegativeInfinity;
-        else if (double.IsNaN(value))
+        } else if (double.IsNaN(value)) {
             return NaN;
+        }
 
         ulong doubleInt;
         unsafe {
@@ -115,8 +120,9 @@ public struct Real10 {
         uint exponent = (uint)(doubleInt >> 52) & 0x7FFu;
         exponent += 0x3FFF - 0x3FF;
 
-        if ((doubleInt & 0x8000000000000000u) != 0)
+        if ((doubleInt & 0x8000000000000000u) != 0) {
             exponent |= 0x8000;
+        }
 
         return new Real10(mantissa, (ushort)exponent);
     }

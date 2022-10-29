@@ -27,8 +27,9 @@ public class GraphicsPresenter16 : Presenter
             ushort* srcPtr = (ushort*)((byte*)this.VideoMode.VideoRam.ToPointer() + this.VideoMode.StartOffset);
             uint* destPtr = (uint*)destination.ToPointer();
 
-            for (int i = 0; i < totalPixels; i++)
+            for (int i = 0; i < totalPixels; i++) {
                 destPtr[i] = Make32Bit(srcPtr[i]);
+            }
         }
     }
 

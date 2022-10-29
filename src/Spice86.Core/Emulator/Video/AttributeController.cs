@@ -18,8 +18,9 @@ public class AttributeController
         unsafe
         {
             this.internalPalette = this.internalPaletteBuffer.ToPointer();
-            for (int i = 0; i < this.InternalPalette.Length; i++)
+            for (int i = 0; i < this.InternalPalette.Length; i++) {
                 this.internalPalette[i] = (byte)i;
+            }
         }
     }
 
@@ -64,8 +65,9 @@ public class AttributeController
     /// <returns>Current value of the register.</returns>
     public byte ReadRegister(AttributeControllerRegister address)
     {
-        if (address >= AttributeControllerRegister.FirstPaletteEntry && address <= AttributeControllerRegister.LastPaletteEntry)
+        if (address >= AttributeControllerRegister.FirstPaletteEntry && address <= AttributeControllerRegister.LastPaletteEntry) {
             return this.InternalPalette[(byte)address];
+        }
 
         return address switch
         {

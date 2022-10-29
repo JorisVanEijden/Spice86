@@ -114,32 +114,36 @@ internal class Scale2x : Scaler
                         aVec[i],
                         srcVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 2] = o1[j];
+                    }
 
                     var o2 = Vector.ConditionalSelect(
                         Vector.AndNot(Vector.AndNot(Vector.Equals(aVec[i], bVec[i]), Vector.Equals(aVec[i], cVec[i])), Vector.Equals(bVec[i], dVec[i])),
                         bVec[i],
                         srcVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 2 + 1] = o2[j];
+                    }
 
                     var o3 = Vector.ConditionalSelect(
                         Vector.AndNot(Vector.AndNot(Vector.Equals(dVec[i], cVec[i]), Vector.Equals(dVec[i], bVec[i])), Vector.Equals(cVec[i], aVec[i])),
                         cVec[i],
                         srcVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 2 + destPitch] = o3[j];
+                    }
 
                     var o4 = Vector.ConditionalSelect(
                         Vector.AndNot(Vector.AndNot(Vector.Equals(bVec[i], dVec[i]), Vector.Equals(bVec[i], aVec[i])), Vector.Equals(dVec[i], cVec[i])),
                         dVec[i],
                         srcVec[i]
                     );
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         pdest[destIndex + j * 2 + destPitch + 1] = o4[j];
+                    }
 
                     destIndex += Vector<uint>.Count * 2;
                     srcIndex += Vector<uint>.Count;
@@ -170,17 +174,21 @@ internal class Scale2x : Scaler
         uint o3 = o1;
         uint o4 = o1;
 
-        if (c == a && c != d && a != b)
+        if (c == a && c != d && a != b) {
             o1 = a;
+        }
 
-        if (a == b && a != c && b != d)
+        if (a == b && a != c && b != d) {
             o2 = b;
+        }
 
-        if (d == c && d != b && c != a)
+        if (d == c && d != b && c != a) {
             o3 = c;
+        }
 
-        if (b == d && b != a && d != c)
+        if (b == d && b != a && d != c) {
             o4 = d;
+        }
 
         pdest[destIndex] = o1;
         pdest[destIndex + 1] = o2;

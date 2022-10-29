@@ -117,18 +117,22 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
                 break;
 
             case XmsFunctions.QueryFreeExtendedMemory:
-                if (this.LargestFreeBlock <= ushort.MaxValue * 1024u)
+                if (this.LargestFreeBlock <= ushort.MaxValue * 1024u) {
                     _machine.Cpu.State.AX = (ushort)(this.LargestFreeBlock / 1024u);
-                else
+                } else {
                     _machine.Cpu.State.AX = unchecked((ushort)ushort.MaxValue);
+                }
 
-                if (this.TotalFreeMemory <= ushort.MaxValue * 1024u)
+                if (this.TotalFreeMemory <= ushort.MaxValue * 1024u) {
                     _machine.Cpu.State.DX = (ushort)(this.TotalFreeMemory / 1024);
-                else
+                } else {
                     _machine.Cpu.State.DX = unchecked((ushort)ushort.MaxValue);
+                }
 
-                if (_machine.Cpu.State.AX == 0 && _machine.Cpu.State.DX == 0)
+                if (_machine.Cpu.State.AX == 0 && _machine.Cpu.State.DX == 0) {
                     _machine.Cpu.State.BL = 0xA0;
+                }
+
                 break;
 
             case XmsFunctions.AllocateExtendedMemoryBlock:
@@ -247,8 +251,9 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
     /// </summary>
     private void EnableLocalA20()
     {
-        if (this.a20EnableCount == 0)
+        if (this.a20EnableCount == 0) {
             this._machine.Memory.EnableA20 = true;
+        }
 
         this.a20EnableCount++;
     }
@@ -257,11 +262,13 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
     /// </summary>
     private void DisableLocalA20()
     {
-        if (this.a20EnableCount == 1)
+        if (this.a20EnableCount == 1) {
             this._machine.Memory.EnableA20 = false;
+        }
 
-        if (this.a20EnableCount > 0)
+        if (this.a20EnableCount > 0) {
             this.a20EnableCount--;
+        }
     }
     /// <summary>
     /// Initializes the internal memory map.
@@ -428,10 +435,11 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
         _machine.Cpu.State.BH = (byte)lockCount;
         _machine.Cpu.State.BL = (byte)(MaxHandles - this.handles.Count);
 
-        if (!this.TryGetBlock(handle, out XmsBlock block))
+        if (!this.TryGetBlock(handle, out XmsBlock block)) {
             _machine.Cpu.State.DX = 0;
-        else
+        } else {
             _machine.Cpu.State.DX = (ushort)((block).Length / 1024u);
+        }
 
         _machine.Cpu.State.AX = 1; // Success.
     }
@@ -459,8 +467,9 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
         }
         else
         {
-            if (this.TryGetBlock(moveData.SourceHandle, out XmsBlock srcBlock))
+            if (this.TryGetBlock(moveData.SourceHandle, out XmsBlock srcBlock)) {
                 srcPtr = this._machine.Memory.GetPointer((int)(XmsBaseAddress + (srcBlock).Offset + moveData.SourceOffset));
+            }
         }
 
         if (moveData.DestHandle == 0)
@@ -470,8 +479,9 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
         }
         else
         {
-            if (this.TryGetBlock(moveData.DestHandle, out XmsBlock destBlock))
+            if (this.TryGetBlock(moveData.DestHandle, out XmsBlock destBlock)) {
                 destPtr = this._machine.Memory.GetPointer((int)(XmsBaseAddress + destBlock.Offset + moveData.DestOffset));
+            }
         }
 
         if (srcPtr == IntPtr.Zero)
@@ -492,8 +502,9 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
             byte* src = (byte*)srcPtr.ToPointer();
             byte* dest = (byte*)destPtr.ToPointer();
 
-            for (uint i = 0; i < moveData.Length; i++)
+            for (uint i = 0; i < moveData.Length; i++) {
                 dest[i] = src[i];
+            }
         }
 
         _machine.Cpu.State.AX = 1; // Success.
@@ -508,9 +519,10 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
         this._machine.Cpu.State.ECX = (uint)(this._machine.Memory.MemorySize - 1);
         this._machine.Cpu.State.EDX = (uint)(this.TotalFreeMemory / 1024);
 
-        if (this._machine.Cpu.State.EAX == 0)
+        if (this._machine.Cpu.State.EAX == 0) {
             this._machine.Cpu.State.BL = 0xA0;
-        else
+        } else {
             this._machine.Cpu.State.BL = 0;
+        }
     }
 }

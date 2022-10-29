@@ -29,8 +29,9 @@ public class TextPresenter : Presenter
             byte* srcPtr = (byte*)videoMode.VideoRam.ToPointer();
 
             this.pages = new ushort*[8];
-            for (int i = 0; i < this.pages.Length; i++)
+            for (int i = 0; i < this.pages.Length; i++) {
                 this.pages[i] = (ushort*)(srcPtr + VideoMode.DisplayPageSize * i);
+            }
         }
 
         this.consoleWidth = (uint)videoMode.Width;
@@ -97,8 +98,9 @@ public class TextPresenter : Presenter
                     var maskResult = Vector.BitwiseAnd(currentVector, indexVector[i]);
                     var equalsResult = Vector.Equals(maskResult, indexVector[i]);
                     var result = Vector.ConditionalSelect(equalsResult, foregroundVector, backgroundVector);
-                    for (int j = 0; j < Vector<uint>.Count; j++)
+                    for (int j = 0; j < Vector<uint>.Count; j++) {
                         dest[x + j] = ToNativeColorFormat(result[j]);
+                    }
 
                     x += Vector<uint>.Count;
                 }
@@ -112,8 +114,9 @@ public class TextPresenter : Presenter
             {
                 byte current = this.font[(index * fontHeight) + y];
 
-                for (int x = 0; x < 8; x++)
+                for (int x = 0; x < 8; x++) {
                     dest[x] = ToNativeColorFormat((current & (1 << (7 - x))) != 0 ? foregroundColor : backgroundColor);
+                }
 
                 dest += this.consoleWidth * 8;
             }

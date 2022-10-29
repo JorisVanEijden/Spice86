@@ -39,13 +39,15 @@ public sealed class PageFaultException : InvalidVMOperationException
         get
         {
             int errorCode = 0;
-            if (this.Cause == PageFaultCause.Write)
+            if (this.Cause == PageFaultCause.Write) {
                 errorCode |= (1 << 1);
+            }
             //else if(this.Cause == PageFaultCause.InstructionFetch)
             //    errorCode |= (1 << 4);
 
-            if (this._userMode)
+            if (this._userMode) {
                 errorCode |= (1 << 2);
+            }
 
             return errorCode;
         }

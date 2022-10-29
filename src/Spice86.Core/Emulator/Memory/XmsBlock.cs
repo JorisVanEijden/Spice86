@@ -31,10 +31,11 @@ internal readonly struct XmsBlock : IEquatable<XmsBlock> {
     public bool IsUsed { get; }
 
     public override string ToString() {
-        if (IsUsed)
+        if (IsUsed) {
             return $"{Handle:X4}: {Offset:X8} to {Offset + Length:X8}";
-        else
+        } else {
             return "Free";
+        }
     }
     public override bool Equals(object? obj) => obj is XmsBlock b && Equals(b);
     public override int GetHashCode() => Handle ^ (int)Offset ^ (int)Length;
@@ -46,13 +47,17 @@ internal readonly struct XmsBlock : IEquatable<XmsBlock> {
     /// <param name="length">Length of the requested block in bytes.</param>
     /// <returns>Array of blocks to replace this block.</returns>
     public XmsBlock[] Allocate(int handle, uint length) {
-        if (IsUsed)
+        if (IsUsed) {
             throw new InvalidOperationException();
-        if (length > Length)
-            throw new ArgumentOutOfRangeException(nameof(length));
+        }
 
-        if (length == Length)
+        if (length > Length) {
+            throw new ArgumentOutOfRangeException(nameof(length));
+        }
+
+        if (length == Length) {
             return new XmsBlock[1] { new XmsBlock(handle, Offset, length, true) };
+        }
 
         var blocks = new XmsBlock[2];
 
@@ -72,10 +77,13 @@ internal readonly struct XmsBlock : IEquatable<XmsBlock> {
     /// <param name="other">Other unused block to merge with.</param>
     /// <returns>Merged block of memory.</returns>
     public XmsBlock Join(XmsBlock other) {
-        if (IsUsed | other.IsUsed)
+        if (IsUsed | other.IsUsed) {
             throw new InvalidOperationException();
-        if (Offset + Length != other.Offset)
+        }
+
+        if (Offset + Length != other.Offset) {
             throw new ArgumentException($"{nameof(other)} was not joinable",nameof(other));
+        }
 
         return new XmsBlock(0, Offset, Length + other.Length, false);
     }

@@ -12,21 +12,25 @@ public sealed class ReservedBlock : IEquatable<ReservedBlock> {
 
     public static bool operator ==(ReservedBlock blockA, ReservedBlock blockB)
     {
-        if (ReferenceEquals(blockA, blockB))
+        if (ReferenceEquals(blockA, blockB)) {
             return true;
+        }
 
-        if (blockA is null)
+        if (blockA is null) {
             return false;
+        }
 
         return blockA.Equals(blockB);
     }
     public static bool operator !=(ReservedBlock blockA, ReservedBlock blockB)
     {
-        if (ReferenceEquals(blockA, blockB))
+        if (ReferenceEquals(blockA, blockB)) {
             return false;
+        }
 
-        if (blockA is null)
+        if (blockA is null) {
             return true;
+        }
 
         return !blockA.Equals(blockB);
     }
@@ -47,8 +51,9 @@ public sealed class ReservedBlock : IEquatable<ReservedBlock> {
     /// <returns>True if blocks are equal; otherwise false.</returns>
     public bool Equals(ReservedBlock? other)
     {
-        if (other is null)
+        if (other is null) {
             return false;
+        }
 
         return this.Segment == other.Segment && this.Length == other.Length;
     }

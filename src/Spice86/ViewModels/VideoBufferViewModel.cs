@@ -17,7 +17,6 @@ using Spice86.Views;
 
 using System;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 
 /// <inheritdoc />
@@ -239,8 +238,9 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
                         int srcPos = ((stride * y) + startOffset + (horizontalPan / 8)) & 0xFFFF;
                         int destPos = (width * y) + destStart;
 
-                        for (int i = bitPan; i < 8; i++)
+                        for (int i = bitPan; i < 8; i++) {
                             destPtr[destPos++] = palette[paletteMap[UnpackIndex(srcPtr[srcPos], 7 - i)]];
+                        }
 
                         srcPos++;
 
@@ -281,8 +281,9 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
 
                         srcPos &= 0xFFFF;
 
-                        for (int i = 0; i < bitPan; i++)
+                        for (int i = 0; i < bitPan; i++) {
                             destPtr[destPos++] = palette[paletteMap[UnpackIndex(srcPtr[srcPos], 7 - i)]];
+                        }
                     }
 
                     // if (height < this.VideoMode.Height)
@@ -300,13 +301,12 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
         }
     }
 
-    // it's important for this to get inlined
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int UnpackIndex(uint value, int index) {
-        if (System.Runtime.Intrinsics.X86.Bmi2.IsSupported)
+        if (System.Runtime.Intrinsics.X86.Bmi2.IsSupported) {
             return (int)System.Runtime.Intrinsics.X86.Bmi2.ParallelBitExtract(value, 0x01010101u << index);
-        else
+        } else {
             return (int)(((value & (1u << index)) >> index) | ((value & (0x100u << index)) >> (7 + index)) | ((value & (0x10000u << index)) >> (14 + index)) | ((value & (0x1000000u << index)) >> (21 + index)));
+        }
     }
 
     private unsafe void DrawVga320x200x8(byte[] memory, Rgb[] palette) {

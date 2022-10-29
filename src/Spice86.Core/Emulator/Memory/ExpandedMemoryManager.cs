@@ -65,10 +65,11 @@ public sealed class ExpandedMemoryManager : InterruptHandler
     {
         uint physicalPage = (fullAddress - (PageFrameSegment << 4)) / PageSize;
         int logicalPage = this.mappedPages[physicalPage];
-        if (logicalPage != -1)
+        if (logicalPage != -1) {
             return (this.xmsBaseAddress + ((uint)logicalPage * PageSize)) | (fullAddress % PageSize);
-        else
+        } else {
             return fullAddress;
+        }
     }
 
     public override byte Index => 0x67;
@@ -258,8 +259,9 @@ public sealed class ExpandedMemoryManager : InterruptHandler
             {
                 if (pagesRequested < emsHandle.PagesAllocated)
                 {
-                    for (int i = emsHandle.LogicalPages.Count - 1; i >= emsHandle.LogicalPages.Count - pagesRequested; i--)
+                    for (int i = emsHandle.LogicalPages.Count - 1; i >= emsHandle.LogicalPages.Count - pagesRequested; i--) {
                         this.mappedPages[emsHandle.LogicalPages[i]] = -1;
+                    }
 
                     emsHandle.LogicalPages.RemoveRange(emsHandle.LogicalPages.Count - pagesRequested, emsHandle.PagesAllocated - pagesRequested);
                 }
@@ -300,8 +302,9 @@ public sealed class ExpandedMemoryManager : InterruptHandler
             if (!handles.ContainsKey(i))
             {
                 var pages = new List<ushort>(pagesRequested);
-                for (int p = 0; p < pagesRequested; p++)
+                for (int p = 0; p < pagesRequested; p++) {
                     pages.Add(GetNextFreePage((short)i));
+                }
 
                 var handle = new EmsHandle(pages);
                 handles.Add(i, handle);
@@ -321,8 +324,9 @@ public sealed class ExpandedMemoryManager : InterruptHandler
         {
             for (int i = 0; i < this.pageOwners.Length; i++)
             {
-                if (this.pageOwners[i] == handle)
+                if (this.pageOwners[i] == handle) {
                     this.pageOwners[i] = -1;
+                }
             }
 
             // Return good status.
@@ -417,8 +421,9 @@ public sealed class ExpandedMemoryManager : InterruptHandler
     {
         for (int i = 0; i < this.mappedPages.Length; i++)
         {
-            if (this.mappedPages[i] == logicalPage)
+            if (this.mappedPages[i] == logicalPage) {
                 this.UnmapPage(i);
+            }
         }
     }
     /// <summary>
@@ -570,8 +575,9 @@ public sealed class ExpandedMemoryManager : InterruptHandler
         {
             for (int i = 0; i < MaximumPhysicalPages; i++)
             {
-                if (handle.SavedPageMap[i] != mappedPages[i])
+                if (handle.SavedPageMap[i] != mappedPages[i]) {
                     this.MapPage(handle.SavedPageMap[i], i);
+                }
             }
         }
 
@@ -688,13 +694,17 @@ public sealed class ExpandedMemoryManager : InterruptHandler
 
     private byte ConvToConv(uint sourceAddress, uint destAddress, int length)
     {
-        if (length < 0)
+        if (length < 0) {
             throw new ArgumentOutOfRangeException(nameof(length));
-        if (length == 0)
-            return 0;
+        }
 
-        if (sourceAddress + length > Memory.ConvMemorySize || destAddress + length > Memory.ConvMemorySize)
+        if (length == 0) {
+            return 0;
+        }
+
+        if (sourceAddress + length > Memory.ConvMemorySize || destAddress + length > Memory.ConvMemorySize) {
             return 0xA2;
+        }
 
         bool overlap = (sourceAddress + length - 1 >= destAddress || destAddress + length - 1 >= sourceAddress);
         bool reverse = overlap && sourceAddress > destAddress;
@@ -702,28 +712,36 @@ public sealed class ExpandedMemoryManager : InterruptHandler
 
         if (!reverse)
         {
-            for (uint offset = 0; offset < length; offset++)
+            for (uint offset = 0; offset < length; offset++) {
                 memory.SetByte(destAddress + offset, memory.GetByte(sourceAddress + offset));
+            }
         }
         else
         {
-            for (int offset = length - 1; offset >= 0; offset--)
+            for (int offset = length - 1; offset >= 0; offset--) {
                 memory.SetByte(destAddress + (uint)offset, memory.GetByte(sourceAddress + (uint)offset));
+            }
         }
 
         return overlap ? (byte)0x92 : (byte)0;
     }
     private byte EmsToConv(int sourcePage, int sourcePageOffset, uint destAddress, int length)
     {
-        if (length < 0)
+        if (length < 0) {
             throw new ArgumentOutOfRangeException(nameof(length));
-        if (length == 0)
-            return 0;
+        }
 
-        if (destAddress + length > Memory.ConvMemorySize)
+        if (length == 0) {
+            return 0;
+        }
+
+        if (destAddress + length > Memory.ConvMemorySize) {
             return 0xA2;
-        if (sourcePageOffset >= PageSize)
+        }
+
+        if (sourcePageOffset >= PageSize) {
             return 0x95;
+        }
 
         int offset = sourcePageOffset;
         uint sourceCount = destAddress;
@@ -733,11 +751,13 @@ public sealed class ExpandedMemoryManager : InterruptHandler
         {
             int size = Math.Min(length, PageSize - offset);
             Span<byte> source = this.GetLogicalPage(pageIndex);
-            if (source.IsEmpty)
+            if (source.IsEmpty) {
                 return 0x8A;
+            }
 
-            for (int i = 0; i < size; i++)
+            for (int i = 0; i < size; i++) {
                 memory.SetByte(sourceCount++, source[offset + i]);
+            }
 
             length -= size;
             pageIndex++;
@@ -748,15 +768,21 @@ public sealed class ExpandedMemoryManager : InterruptHandler
     }
     private byte ConvToEms(uint sourceAddress, int destPage, int destPageOffset, int length)
     {
-        if (length < 0)
+        if (length < 0) {
             throw new ArgumentOutOfRangeException(nameof(length));
-        if (length == 0)
-            return 0;
+        }
 
-        if (sourceAddress + length > Memory.ConvMemorySize)
+        if (length == 0) {
+            return 0;
+        }
+
+        if (sourceAddress + length > Memory.ConvMemorySize) {
             return 0xA2;
-        if (destPageOffset >= PageSize)
+        }
+
+        if (destPageOffset >= PageSize) {
             return 0x95;
+        }
 
         Memory memory = this._machine.Memory;
         int offset = destPageOffset;
@@ -766,11 +792,13 @@ public sealed class ExpandedMemoryManager : InterruptHandler
         {
             int size = Math.Min(length, PageSize - offset);
             Span<byte> target = this.GetLogicalPage(pageIndex);
-            if (target.IsEmpty)
+            if (target.IsEmpty) {
                 return 0x8A;
+            }
 
-            for (int i = 0; i < size; i++)
+            for (int i = 0; i < size; i++) {
                 target[offset + i] = memory.GetByte(sourceCount++);
+            }
 
             length -= size;
             pageIndex++;
@@ -781,13 +809,17 @@ public sealed class ExpandedMemoryManager : InterruptHandler
     }
     private byte EmsToEms(EmsHandle srcHandle, int sourcePage, int sourcePageOffset, EmsHandle destHandle, int destPage, int destPageOffset, int length)
     {
-        if (length < 0)
+        if (length < 0) {
             throw new ArgumentOutOfRangeException(nameof(length));
-        if (length == 0)
-            return 0;
+        }
 
-        if (sourcePageOffset >= ExpandedMemoryManager.PageSize || destPageOffset >= ExpandedMemoryManager.PageSize)
+        if (length == 0) {
+            return 0;
+        }
+
+        if (sourcePageOffset >= ExpandedMemoryManager.PageSize || destPageOffset >= ExpandedMemoryManager.PageSize) {
             return 0x95;
+        }
 
         bool overlap = false;
         bool reverse = false;
@@ -822,11 +854,13 @@ public sealed class ExpandedMemoryManager : InterruptHandler
                 int size = Math.Min(Math.Min(length, ExpandedMemoryManager.PageSize - sourceOffset), ExpandedMemoryManager.PageSize - destOffset);
                 Span<byte> source = this.GetLogicalPage(currentSourcePage);
                 Span<byte> dest = this.GetLogicalPage(currentDestPage);
-                if (source.IsEmpty || dest.IsEmpty)
+                if (source.IsEmpty || dest.IsEmpty) {
                     return 0x8A;
+                }
 
-                for (int i = 0; i < size; i++)
+                for (int i = 0; i < size; i++) {
                     dest[destOffset + i] = source[sourceOffset + i];
+                }
 
                 length -= size;
                 sourceOffset += size;

@@ -52,8 +52,9 @@ public class TextMode : VideoMode
 
     internal override byte GetVramByte(uint offset)
     {
-        if (offset - BaseAddress >= VideoHandler.TotalVramBytes)
+        if (offset - BaseAddress >= VideoHandler.TotalVramBytes) {
             return 0;
+        }
 
         unsafe
         {
@@ -66,19 +67,21 @@ public class TextMode : VideoMode
             else
             {
                 int map = this.graphics.ReadMapSelect & 0x3;
-                if (map == 0 || map == 1)
+                if (map == 0 || map == 1) {
                     return this.planes[map][address];
-                else if (map == 3)
+                } else if (map == 3) {
                     return this.Font[address % 4096];
-                else
+                } else {
                     return 0;
+                }
             }
         }
     }
     internal override void SetVramByte(uint offset, byte value)
     {
-        if (offset - BaseAddress >= VideoHandler.TotalVramBytes)
+        if (offset - BaseAddress >= VideoHandler.TotalVramBytes) {
             return;
+        }
 
         unsafe
         {
@@ -91,13 +94,17 @@ public class TextMode : VideoMode
             else
             {
                 uint mapMask = this.sequencer.MapMask.Packed;
-                if ((mapMask & 0x01) != 0)
+                if ((mapMask & 0x01) != 0) {
                     planes[0][address] = value;
-                if ((mapMask & 0x02) != 0)
-                    planes[1][address] = value;
+                }
 
-                if ((mapMask & 0x04) != 0)
+                if ((mapMask & 0x02) != 0) {
+                    planes[1][address] = value;
+                }
+
+                if ((mapMask & 0x04) != 0) {
                     this.Font[(address / 32) * this.FontHeight + (address % 32)] = value;
+                }
             }
         }
     }
@@ -162,8 +169,9 @@ public class TextMode : VideoMode
     /// <param name="height">Height of the rectangle to clear.</param>
     public void Clear(Point offset, int width, int height)
     {
-        if (width <= 0 || height <= 0)
+        if (width <= 0 || height <= 0) {
             return;
+        }
 
         int pageOffset = DisplayPageSize * this.ActiveDisplayPage;
 

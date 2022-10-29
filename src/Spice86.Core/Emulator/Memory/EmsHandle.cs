@@ -41,9 +41,10 @@ internal sealed class EmsHandle {
     /// </summary>
     /// <returns>String containing the handle name.</returns>
     public override string ToString() {
-        if (!string.IsNullOrEmpty(Name) && Name != nullHandleName)
+        if (!string.IsNullOrEmpty(Name) && Name != nullHandleName) {
             return Name;
-        else
+        } else {
             return "Untitled";
+        }
     }
 }

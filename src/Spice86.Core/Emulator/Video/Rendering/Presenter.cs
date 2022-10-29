@@ -49,8 +49,9 @@ public abstract class Presenter : IDisposable
         }
         set
         {
-            if (this.Scaler == value)
+            if (this.Scaler == value) {
                 return;
+            }
 
             if (value != ScalingAlgorithm.None && this.internalBuffer == null)
             {

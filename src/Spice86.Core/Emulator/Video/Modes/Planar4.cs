@@ -119,10 +119,11 @@ public abstract class Planar4 : VideoMode
                 //uint bgMask = ~fgMask;
                 uint value = fg & fgMask;
 
-                if ((background & 0x08) == 0)
+                if ((background & 0x08) == 0) {
                     this.videoRam[startPos + (row * stride)] = value;
-                else
+                } else {
                     this.videoRam[startPos + (row * stride)] ^= value;
+                }
             }
         }
     }

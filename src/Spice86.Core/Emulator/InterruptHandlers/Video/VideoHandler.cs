@@ -131,12 +131,14 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
                         break;
 
                     case VgaFunctions.EGA_SelectVerticalResolution:
-                        if (VirtualMachine.Cpu.State.AL == 0)
+                        if (VirtualMachine.Cpu.State.AL == 0) {
                             this.verticalTextResolution = 8;
-                        else if (VirtualMachine.Cpu.State.AL == 1)
+                        } else if (VirtualMachine.Cpu.State.AL == 1) {
                             this.verticalTextResolution = 14;
-                        else
+                        } else {
                             this.verticalTextResolution = 16;
+                        }
+
                         VirtualMachine.Cpu.State.AL = 0x12; // Success
                         break;
 
@@ -423,15 +425,19 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
             case Ports.SequencerData:
                 SequencerMemoryMode previousMode = Sequencer.SequencerMemoryMode;
                 Sequencer.WriteRegister(sequencerRegister, value);
-                if ((previousMode & SequencerMemoryMode.Chain4) == SequencerMemoryMode.Chain4 && (Sequencer.SequencerMemoryMode & SequencerMemoryMode.Chain4) == 0)
+                if ((previousMode & SequencerMemoryMode.Chain4) == SequencerMemoryMode.Chain4 && (Sequencer.SequencerMemoryMode & SequencerMemoryMode.Chain4) == 0) {
                     EnterModeX();
+                }
+
                 break;
 
             case Ports.AttributeAddress:
-                if (!attributeDataMode)
+                if (!attributeDataMode) {
                     attributeRegister = (AttributeControllerRegister)(value & 0x1F);
-                else
+                } else {
                     AttributeController.WriteRegister(attributeRegister, value);
+                }
+
                 attributeDataMode = !attributeDataMode;
                 break;
 
@@ -448,8 +454,10 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
             case Ports.CrtControllerDataAlt:
                 int previousVerticalEnd = CrtController.VerticalDisplayEnd;
                 CrtController.WriteRegister(crtRegister, value);
-                if (previousVerticalEnd != CrtController.VerticalDisplayEnd)
+                if (previousVerticalEnd != CrtController.VerticalDisplayEnd) {
                     ChangeVerticalEnd();
+                }
+
                 break;
         }
     }
@@ -660,8 +668,9 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
         ushort segment = VirtualMachine.Cpu.State.ES;
         uint offset = (ushort)VirtualMachine.Cpu.State.DX;
 
-        for (uint i = 0; i < 16u; i++)
+        for (uint i = 0; i < 16u; i++) {
             SetEgaPaletteRegister((int)i, VirtualMachine.Memory.GetByte(segment, offset + i));
+        }
     }
     /// <summary>
     /// Gets a specific EGA color palette register.
@@ -670,10 +679,11 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
     /// <param name="color">New value of the color.</param>
     private void SetEgaPaletteRegister(int index, byte color)
     {
-        if (VirtualMachine.Memory.Bios.VideoMode == VideoMode10h.ColorGraphics320x200x4)
+        if (VirtualMachine.Memory.Bios.VideoMode == VideoMode10h.ColorGraphics320x200x4) {
             AttributeController.InternalPalette[index & 0x0F] = (byte)(color & 0x0F);
-        else
+        } else {
             AttributeController.InternalPalette[index & 0x0F] = color;
+        }
     }
     /// <summary>
     /// Gets information about BIOS fonts.
@@ -760,8 +770,9 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
         {
             unsafe
             {
-                if (this.VideoRam != IntPtr.Zero)
+                if (this.VideoRam != IntPtr.Zero) {
                     NativeMemory.Free(this.VideoRam.ToPointer());
+                }
             }
 
             this.disposed = true;
@@ -775,8 +786,9 @@ public sealed class VideoHandler : InterruptHandler, IDisposable
     private static byte GetInputStatus1Value()
     {
         uint value = DualPic.IsInRealtimeInterval(VerticalBlankingTime, RefreshRate) ? 0x09u : 0x00u;
-        if (DualPic.IsInRealtimeInterval(HorizontalBlankingTime, HorizontalPeriod))
+        if (DualPic.IsInRealtimeInterval(HorizontalBlankingTime, HorizontalPeriod)) {
             value |= 0x01u;
+        }
 
         return (byte)value;
     }

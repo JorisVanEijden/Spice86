@@ -19,10 +19,11 @@ internal abstract class Scaler
 
     public void Apply(IntPtr source, IntPtr destination)
     {
-        if (Vector.IsHardwareAccelerated)
+        if (Vector.IsHardwareAccelerated) {
             this.VectorScale(source, destination);
-        else
+        } else {
             this.Scale(source, destination);
+        }
     }
 
     protected abstract void Scale(IntPtr source, IntPtr destination);

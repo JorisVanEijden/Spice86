@@ -74,8 +74,9 @@ public sealed class Vga256 : VideoMode
                 uint value = font[index * 8 + row];
                 int pos = startPos + (row * stride);
 
-                for (int column = 0; column < 8; column++)
+                for (int column = 0; column < 8; column++) {
                     this.videoRam[pos + column] = (value & (0x80 >> column)) != 0 ? foreground : background;
+                }
             }
         }
     }

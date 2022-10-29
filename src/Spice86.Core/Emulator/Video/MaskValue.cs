@@ -32,17 +32,19 @@ public readonly struct MaskValue
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint Unpack(uint v)
     {
-        if (Bmi2.IsSupported)
+        if (Bmi2.IsSupported) {
             return Bmi2.ParallelBitDeposit(v, 0x01010101);
-        else
+        } else {
             return (v | (v << 7) | (v << 14) | (v << 21)) & 0x01010101u;
+        }
     }
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static uint Pack(uint v)
     {
-        if (Bmi2.IsSupported)
+        if (Bmi2.IsSupported) {
             return Bmi2.ParallelBitExtract(v, 0x01010101);
-        else
+        } else {
             return v & 0x1 | (v & 0x100) >> 7 | (v & 0x10000) >> 14 | (v & 0x1000000) >> 21;
+        }
     }
 }
