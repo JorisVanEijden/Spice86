@@ -132,15 +132,18 @@ public class Machine : IDisposable {
 
         // A full 8MB of addressable memory :)
         Memory = new Memory(this, (uint)Configuration.Kilobytes < 0x800000 ? 0x800000 : (uint)Configuration.Kilobytes);
+        if(gui is not null) {
 
-
-        Cpu = new Cpu(this, new ServiceProvider().GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
+            Memory.InitializeFonts();
+            Memory.InitializeBiosData();
+        }
+        
+        Cpu = new Cpu(this, serviceProvider.GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
         Video = new VideoHandler(this);
         xmm = new(this);
         emm = new(this);
         Memory.Video = this.Video;
         Memory.Ems = emm;
-        Cpu = new Cpu(this, serviceProvider.GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
 
         // Breakpoints
         MachineBreakpoints = new MachineBreakpoints(this);

@@ -376,7 +376,6 @@ public class MachineTest {
     private Machine Execute(string binName) {
         using ProgramExecutor programExecutor = CreateProgramExecutor(binName);
         programExecutor.Run();
-        //new StringsOverrides(new(), programExecutor.Machine).entry_F000_FFF0_FFFF0(0);
         return programExecutor.Machine;
     }
 

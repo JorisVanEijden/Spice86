@@ -127,11 +127,6 @@ public class Memory {
         this.Reserve(0xA000, VramUpperBound - VramAddress + 16u);
 
         Bios = new Bios(this);
-#warning Kludge to make tests pass!
-#if RELEASE
-        InitializeFonts();
-        InitializeBiosData();
-#endif
         _machine = machine;
         Ram = new byte[memorySize * 1024];
         UInt8 = new(this);
@@ -869,7 +864,7 @@ public class Memory {
     /// <summary>
     /// Copies font data to emulated memory.
     /// </summary>
-    private void InitializeFonts()
+    internal void InitializeFonts()
     {
         ReadOnlySpan<byte> ibm8x8 = Fonts.IBM8x8;
         Span<byte> destination = this.GetSpan(FontSegment, Font8x8Offset, ibm8x8.Length);
@@ -905,7 +900,7 @@ public class Memory {
     /// <summary>
     /// Writes static BIOS configuration data to emulated memory.
     /// </summary>
-    private void InitializeBiosData()
+    internal void InitializeBiosData()
     {
         ushort segment = BiosConfigurationAddress.Segment;
         ushort offset = BiosConfigurationAddress.Offset;
