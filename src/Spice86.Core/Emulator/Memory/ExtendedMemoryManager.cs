@@ -20,6 +20,8 @@ internal sealed class ExtendedMemoryManager : InterruptHandler, IDeviceCallbackP
     private readonly SortedList<int, int> handles = new();
 
     public ExtendedMemoryManager(Machine machine) : base(machine) {
+        //TODO: Initialize this in Machine on startup, along with other
+        // IDeviceCallbackProvider devices.
         callbackAddress = new(0,0);
         _machine = machine;
         this.InitializeMemoryMap();

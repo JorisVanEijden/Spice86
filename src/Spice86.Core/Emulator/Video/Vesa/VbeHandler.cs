@@ -8,6 +8,7 @@ using Spice86.Core.Emulator.VM;
 
 /// <summary>
 /// Emulates SVGA VESA VBE functions.
+/// TODO: Remove SVGA and VBE. We don't want to run protected mode stuff.
 /// </summary>
 internal sealed class VbeHandler : IDeviceCallbackProvider
 {

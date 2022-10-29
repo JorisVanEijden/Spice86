@@ -15,6 +15,7 @@ using System.Linq;
 
 /// <summary>
 /// Implementation of VGA card, currently only supports mode 0x13.<br/>
+/// TODO: Import code from Aeon's Graphics : VideoComponent. This branch won't work without it.
 /// </summary>
 public class VgaCard : DefaultIOPortHandler {
     private readonly ILogger _logger;

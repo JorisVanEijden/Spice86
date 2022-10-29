@@ -14,6 +14,7 @@ using Spice86.Core.Emulator.Devices.ExternalInput;
 
 /// <summary>
 /// Provides emulated video and int 10h functions.
+/// TODO: Merge it into VideoBiosInt10Handler
 /// </summary>
 public sealed class VideoHandler : InterruptHandler, IDisposable
 {

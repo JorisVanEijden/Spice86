@@ -121,7 +121,7 @@ public class Machine : IDisposable {
 
     public Configuration Configuration { get; }
 
-    public VideoHandler Video { get; }
+    //public VideoHandler Video { get; }
 
     public Machine(ProgramExecutor programExecutor, IGui? gui, IKeyScanCodeConverter? keyScanCodeConverter, CounterConfigurator counterConfigurator, ExecutionFlowRecorder executionFlowRecorder, Configuration configuration, bool recordData) {
         _programExecutor = programExecutor;
@@ -137,12 +137,13 @@ public class Machine : IDisposable {
             Memory.InitializeFonts();
             Memory.InitializeBiosData();
         }
+
         
         Cpu = new Cpu(this, serviceProvider.GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
-        Video = new VideoHandler(this);
+        //Video = new VideoHandler(this);
         xmm = new(this);
         emm = new(this);
-        Memory.Video = this.Video;
+        //Memory.Video = this.Video;
         Memory.Ems = emm;
 
         // Breakpoints
