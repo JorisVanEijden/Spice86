@@ -17,7 +17,7 @@ public class TextMode : VideoMode
     private readonly Graphics graphics;
     private readonly Sequencer sequencer;
 
-    public TextMode(int width, int height, int fontHeight, VideoHandler video)
+    public TextMode(int width, int height, int fontHeight, VideoBiosInt10Handler video)
         : base(width, height, 4, false, fontHeight, VideoModeType.Text, video)
     {
         unsafe
@@ -52,7 +52,7 @@ public class TextMode : VideoMode
 
     internal override byte GetVramByte(uint offset)
     {
-        if (offset - BaseAddress >= VideoHandler.TotalVramBytes) {
+        if (offset - BaseAddress >= VideoBiosInt10Handler.TotalVramBytes) {
             return 0;
         }
 
@@ -79,7 +79,7 @@ public class TextMode : VideoMode
     }
     internal override void SetVramByte(uint offset, byte value)
     {
-        if (offset - BaseAddress >= VideoHandler.TotalVramBytes) {
+        if (offset - BaseAddress >= VideoBiosInt10Handler.TotalVramBytes) {
             return;
         }
 
@@ -138,7 +138,7 @@ public class TextMode : VideoMode
         int value = index | (foreground << 8) | (background << 12);
         SetVramWord((uint)((y * this.Stride) + (x * 2)) + BaseAddress, (ushort)value);
     }
-    internal override void InitializeMode(VideoHandler video)
+    internal override void InitializeMode(VideoBiosInt10Handler video)
     {
         base.InitializeMode(video);
         this.graphics.GraphicsMode = 0x10; // OddEven mode

@@ -1,4 +1,5 @@
 ﻿using Spice86.Core.Emulator.Video.Modes;
+using Spice86.Shared;
 
 using System.Runtime.CompilerServices;
 
@@ -24,7 +25,7 @@ public class GraphicsPresenter4 : Presenter
     {
         int width = this.VideoMode.Width;
         int height = Math.Min(this.VideoMode.Height, this.VideoMode.LineCompare + 1);
-        ReadOnlySpan<uint> palette = this.VideoMode.Palette;
+        ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
         int stride = this.VideoMode.Stride;
         int horizontalPan = this.VideoMode.HorizontalPanning;
         int startOffset = this.VideoMode.StartOffset;

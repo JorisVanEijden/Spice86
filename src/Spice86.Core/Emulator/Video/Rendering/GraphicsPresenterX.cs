@@ -1,5 +1,6 @@
 ﻿using Spice86.Core.Emulator.InterruptHandlers.Video;
 using Spice86.Core.Emulator.Video.Modes;
+using Spice86.Shared;
 
 namespace Spice86.Core.Emulator.Video.Rendering;
 /// <summary>
@@ -10,8 +11,8 @@ public class GraphicsPresenterX : Presenter
     /// <summary>
     /// Initializes a new instance of the GraphicsPresenterX class.
     /// </summary>
-    /// <param name="dest">Pointer to destination bitmap.</param>
     /// <param name="videoMode">VideoMode instance describing the video mode.</param>
+    /// <param name="colorConversionFunc"></param>
     public unsafe GraphicsPresenterX(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) : base(videoMode, colorConversionFunc)
     {
     }
@@ -22,14 +23,14 @@ public class GraphicsPresenterX : Presenter
     {
         int width = this.VideoMode.Width;
         int height = this.VideoMode.Height;
-        ReadOnlySpan<uint> palette = this.VideoMode.Palette;
+        ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
         int startOffset = this.VideoMode.StartOffset;
         int stride = this.VideoMode.Stride;
         int lineCompare = this.VideoMode.LineCompare / 2;
 
         unsafe
         {
-            var bmp = new MemoryBitmap(stride * 4, VideoHandler.TotalVramBytes / (stride * 4));
+            var bmp = new MemoryBitmap(stride * 4, VideoBiosInt10Handler.TotalVramBytes / (stride * 4));
             uint* destPtr = (uint*)bmp.PixelBuffer.ToPointer();
             uint* src = (uint*)this.VideoMode.VideoRam.ToPointer();
 
@@ -65,7 +66,7 @@ public class GraphicsPresenterX : Presenter
     {
         int width = this.VideoMode.Width;
         int height = this.VideoMode.Height;
-        ReadOnlySpan<uint> palette = this.VideoMode.Palette;
+        ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
         int startOffset = this.VideoMode.StartOffset;
         int stride = this.VideoMode.Stride;
         int lineCompare = this.VideoMode.LineCompare / 2;

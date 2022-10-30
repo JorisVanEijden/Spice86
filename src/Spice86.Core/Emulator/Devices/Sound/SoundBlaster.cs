@@ -339,7 +339,7 @@ public sealed class SoundBlaster : DefaultIOPortHandler, IDmaDevice8, IDmaDevice
                 //if(commandData.Count >= 2 && (commandData[0] | (commandData[1] << 8)) >= 2048)
                 _dsp.Begin(false, false, false);
                 //else
-                //    vm.InterruptController.RaiseHardwareInterrupt(irq);
+                //    _machine.InterruptController.RaiseHardwareInterrupt(irq);
                 //System.Diagnostics.Debug.WriteLine("Single-cycle DMA");
                 _machine.PerformDmaTransfers();
                 break;

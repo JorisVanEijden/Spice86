@@ -11,7 +11,7 @@ public class CgaMode4 : VideoMode
     private const uint BaseAddress = 0x18000;
     private unsafe readonly byte* videoRam;
 
-    public CgaMode4(VideoHandler video) : base(320, 200, 2, false, 8, VideoModeType.Graphics, video)
+    public CgaMode4(VideoBiosInt10Handler video) : base(320, 200, 2, false, 8, VideoModeType.Graphics, video)
     {
         unsafe
         {

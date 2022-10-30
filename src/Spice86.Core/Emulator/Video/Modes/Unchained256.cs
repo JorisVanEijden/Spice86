@@ -7,7 +7,7 @@ namespace Spice86.Core.Emulator.Video.Modes;
 /// </summary>
 public class Unchained256 : Planar4
 {
-    public Unchained256(int width, int height, VideoHandler video)
+    public Unchained256(int width, int height, VideoBiosInt10Handler video)
         : base(width, height, 8, 8, VideoModeType.Graphics, video)
     {
     }

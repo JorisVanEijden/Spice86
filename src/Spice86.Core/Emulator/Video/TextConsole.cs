@@ -12,7 +12,7 @@ public class TextConsole
     private const byte ansiEscape = 0x1B;
     private readonly StringBuilder ansiCommand = new();
     private Point savedPosition = new(0, 24);
-    private readonly VideoHandler video;
+    private readonly VideoBiosInt10Handler video;
     private readonly Bios bios;
     private bool boldEnabled;
     private bool negativeEnabled;
@@ -23,7 +23,7 @@ public class TextConsole
     /// </summary>
     /// <param name="video">Current VideoHandler instance.</param>
     /// <param name="bios">Current Bios instance.</param>
-    public TextConsole(VideoHandler video, Bios bios)
+    public TextConsole(VideoBiosInt10Handler video, Bios bios)
     {
         unsafe
         {

@@ -1,5 +1,6 @@
 ﻿namespace Spice86.Core.Emulator.Video.Modes;
 
+using Spice86.Core.Emulator.Devices.Video;
 using Spice86.Core.Emulator.InterruptHandlers.Video;
 
 using Spice86.Core.Emulator.Memory;
@@ -21,9 +22,9 @@ public abstract class VideoMode {
 
     private readonly CrtController crtController;
     private readonly AttributeController attributeController;
-    private readonly Dac dac;
+    private readonly VgaDac dac;
 
-    private protected VideoMode(int width, int height, int bpp, bool planar, int fontHeight, VideoModeType modeType, VideoHandler video) {
+    private protected VideoMode(int width, int height, int bpp, bool planar, int fontHeight, VideoModeType modeType, VideoBiosInt10Handler video) {
         Width = width;
         Height = height;
         OriginalHeight = height;
@@ -31,12 +32,12 @@ public abstract class VideoMode {
         IsPlanar = planar;
         FontHeight = fontHeight;
         VideoModeType = modeType;
-        dac = video.Dac;
+        dac = video.Machine.VgaCard.VgaDac;
         crtController = video.CrtController;
         attributeController = video.AttributeController;
         VideoRam = GetVideoRamPointer(video);
 
-        InitializeFont(video.VirtualMachine.Memory);
+        InitializeFont(video.Machine.Memory);
     }
     private protected VideoMode(int width, int height, VideoMode baseMode) {
         Width = width;
@@ -118,7 +119,7 @@ public abstract class VideoMode {
     /// <summary>
     /// Gets the current VGA color palette.
     /// </summary>
-    public ReadOnlySpan<uint> Palette => dac.Palette;
+    public Span<Shared.Rgb> Palette => dac.Palette.AsSpan();
     /// <summary>
     /// Gets a value indicating whether the display mode is planar.
     /// </summary>
@@ -195,12 +196,12 @@ public abstract class VideoMode {
     /// Performs any necessary initialization upon entering the video mode.
     /// </summary>
     /// <param name="video">The video device.</param>
-    internal virtual void InitializeMode(VideoHandler video) {
-        video.VirtualMachine.Memory.Bios.CharacterPointHeight = (ushort)FontHeight;
+    internal virtual void InitializeMode(VideoBiosInt10Handler video) {
+        video.Machine.Memory.Bios.CharacterPointHeight = (ushort)FontHeight;
 
         unsafe {
             byte* ptr = (byte*)VideoRam.ToPointer();
-            for (int i = 0; i < VideoHandler.TotalVramBytes; i++) {
+            for (int i = 0; i < VideoBiosInt10Handler.TotalVramBytes; i++) {
                 ptr[i] = 0;
             }
         }
@@ -233,7 +234,7 @@ public abstract class VideoMode {
     /// </summary>
     /// <param name="video">Current VideoHandler instance.</param>
     /// <returns>Pointer to the mode's video RAM.</returns>
-    internal virtual IntPtr GetVideoRamPointer(VideoHandler video) => video.VideoRam;
+    internal virtual IntPtr GetVideoRamPointer(VideoBiosInt10Handler video) => video.VideoRam;
 
     /// <summary>
     /// Copies the current font from emulated memory into a buffer.

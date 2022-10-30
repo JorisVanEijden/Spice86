@@ -211,7 +211,7 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
     // TODO: Inject graphics presenters for all the supported video mdoes
     // TODO: extend the caller to recognize those other video modes
     // TODO: use a fixed pointer over the memory param (temporary for code import)
-    // TODO: Make them all work with Gdb video buffer addition feature
+    // TODO: Make them all work with Gdb video buffer start offset relative to the current video mode
     // TODO: Remove all pointers and pointers arithmetic everywhere, except for the ILockedFramebuffer stuff in this file.
     private unsafe void DrawVga640x350x4(byte[] memory, Rgb[] palette) {
         if (Bitmap is null) {

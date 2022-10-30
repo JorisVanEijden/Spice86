@@ -1,4 +1,5 @@
 ﻿using Spice86.Core.Emulator.Video.Modes;
+using Spice86.Shared;
 
 namespace Spice86.Core.Emulator.Video.Rendering;
 /// <summary>
@@ -20,7 +21,7 @@ public class GraphicsPresenter8 : Presenter
     protected override unsafe void DrawFrame(IntPtr destination)
     {
         uint totalPixels = (uint)this.VideoMode.Width * (uint)this.VideoMode.Height;
-        ReadOnlySpan<uint> palette = this.VideoMode.Palette;
+        ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
         byte* srcPtr = (byte*)this.VideoMode.VideoRam.ToPointer() + (uint)this.VideoMode.StartOffset;
         uint* destPtr = (uint*)destination.ToPointer();
 

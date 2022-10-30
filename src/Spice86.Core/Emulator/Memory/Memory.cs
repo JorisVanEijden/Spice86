@@ -77,7 +77,7 @@ public class Memory {
     /// <summary>
     /// Gets or sets the emulated video device.
     /// </summary>
-    internal VideoHandler? Video { get; set; }
+    internal VideoBiosInt10Handler? Video { get; set; }
 
     internal Bios Bios { get; }
 
@@ -164,6 +164,8 @@ public class Memory {
 
     /// <summary>
     /// Array of cached physical page addresses.
+    /// TODO: Remove this, this is related to protected mode.
+    /// We don't care about that.
     /// </summary>
     private unsafe uint* pageCache;
 

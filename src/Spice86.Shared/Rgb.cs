@@ -2,6 +2,7 @@
 
 /// <summary>
 /// RGB representation of a color.
+/// TODO: Verify that the uint operator is correct.
 /// </summary>
 public record struct Rgb {
     public byte R { get; set; }

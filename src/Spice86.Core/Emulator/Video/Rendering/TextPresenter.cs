@@ -1,4 +1,5 @@
 ﻿using Spice86.Core.Emulator.Video.Modes;
+using Spice86.Shared;
 
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -47,7 +48,7 @@ public class TextPresenter : Presenter
     {
         unsafe
         {
-            ReadOnlySpan<uint> palette = this.VideoMode.Palette;
+            ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
             byte* internalPalette = stackalloc byte[16];
             this.VideoMode.InternalPalette.CopyTo(new Span<byte>(internalPalette, 16));
             uint displayPage = (uint)this.VideoMode.ActiveDisplayPage;

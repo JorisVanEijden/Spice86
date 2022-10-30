@@ -5,7 +5,7 @@ using Spice86.Core.Emulator.VM;
 using Spice86.Shared;
 
 /// <summary>
-/// VGA Digital Analog Converter Implementation.
+/// VGA Digital Analog Converter Implementation. Provides access to the palette.
 /// </summary>
 public class VgaDac {
     public const int VgaDacnotInitialized = 0;
@@ -18,15 +18,18 @@ public class VgaDac {
 
     public VgaDac(Machine machine) {
         _machine = machine;
+        Reset();
+    }
 
+    public void Reset() {
         // Initial VGA default palette initialization
-        for (int i = 0; i < Rgbs.Length; i++) {
+        for (int i = 0; i < Palette.Length; i++) {
             Rgb rgb = new() {
                 R = (byte)((i >> 5 & 0x7) * 255 / 7),
                 G = (byte)((i >> 2 & 0x7) * 255 / 7),
                 B = (byte)((i & 0x3) * 255 / 3)
             };
-            Rgbs[i] = rgb;
+            Palette[i] = rgb;
         }
     }
 
@@ -41,14 +44,14 @@ public class VgaDac {
 
     public int ReadIndex { get; set; }
 
-    public Rgb[] Rgbs { get; } = new Rgb[256];
+    public Rgb[] Palette { get; } = new Rgb[256];
 
     public int State { get; set; } = 1;
 
     public int WriteIndex { get; set; }
 
     public byte ReadColor() {
-        Rgb rgb = Rgbs[ReadIndex];
+        Rgb rgb = Palette[ReadIndex];
         byte value = Colour switch {
             Redindex => rgb.R,
             GreenIndex => rgb.G,
@@ -67,7 +70,7 @@ public class VgaDac {
     }
 
     public void WriteColor(byte colorValue) {
-        Rgb rgb = Rgbs[WriteIndex];
+        Rgb rgb = Palette[WriteIndex];
         switch (Colour) {
             case Redindex:
                 rgb.R = colorValue;
@@ -86,5 +89,21 @@ public class VgaDac {
         if (Colour == 0) {
             WriteIndex++;
         }
+    }
+
+    /// <summary>
+    /// Sets a color to the specified RGB values.
+    /// </summary>
+    /// <param name="index">Index of color to set.</param>
+    /// <param name="r">Red component.</param>
+    /// <param name="g">Green component.</param>
+    /// <param name="b">Blue component.</param>
+    public void SetColor(byte index, byte r, byte g, byte b) {
+        Rgb color = new() {
+            R = r,
+            G = g,
+            B = b
+        };
+        this.Palette[index] = color;
     }
 }

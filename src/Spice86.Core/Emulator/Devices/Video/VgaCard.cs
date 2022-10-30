@@ -15,7 +15,10 @@ using System.Linq;
 
 /// <summary>
 /// Implementation of VGA card, currently only supports mode 0x13.<br/>
-/// TODO: Import code from Aeon's Graphics : VideoComponent. This branch won't work without it.
+/// TODO: Merge VgaFunctions related code in Aeon's VideoHandler into this, once VideoHandler code is merged into VideoBiosInt10Handler.
+/// Complex plan...
+/// TODO: Make all VideoModes call SetResolution through this, and make them work with Gdb
+/// TODO: Every time a VideoMode change occurs, this must be called.
 /// </summary>
 public class VgaCard : DefaultIOPortHandler {
     private readonly ILogger _logger;
@@ -54,7 +57,7 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public void GetBlockOfDacColorRegisters(int firstRegister, int numberOfColors, uint colorValuesAddress) {
-        Rgb[] rgbs = VgaDac.Rgbs;
+        Rgb[] rgbs = VgaDac.Palette;
         for (int i = 0; i < numberOfColors; i++) {
             int registerToSet = firstRegister + i;
             Rgb rgb = rgbs[registerToSet];
@@ -137,7 +140,7 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public void SetBlockOfDacColorRegisters(int firstRegister, int numberOfColors, uint colorValuesAddress) {
-        Rgb[] rgbs = VgaDac.Rgbs;
+        Rgb[] rgbs = VgaDac.Palette;
         for (int i = 0; i < numberOfColors; i++) {
             int registerToSet = firstRegister + i;
             Rgb rgb = rgbs[registerToSet];
@@ -201,6 +204,6 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public void UpdateScreen() {
-        _gui?.Draw(_memory.Ram, VgaDac.Rgbs, CurrentVideoMode);
+        _gui?.Draw(_memory.Ram, VgaDac.Palette, CurrentVideoMode);
     }
 }

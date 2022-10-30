@@ -14,7 +14,7 @@ public abstract class Planar4 : VideoMode
     private readonly Graphics graphics;
     private readonly Sequencer sequencer;
 
-    public Planar4(int width, int height, int bpp, int fontHeight, VideoModeType modeType, VideoHandler video)
+    public Planar4(int width, int height, int bpp, int fontHeight, VideoModeType modeType, VideoBiosInt10Handler video)
         : base(width, height, bpp, true, fontHeight, modeType, video)
     {
         unsafe

@@ -121,8 +121,6 @@ public class Machine : IDisposable {
 
     public Configuration Configuration { get; }
 
-    //public VideoHandler Video { get; }
-
     public Machine(ProgramExecutor programExecutor, IGui? gui, IKeyScanCodeConverter? keyScanCodeConverter, CounterConfigurator counterConfigurator, ExecutionFlowRecorder executionFlowRecorder, Configuration configuration, bool recordData) {
         _programExecutor = programExecutor;
         Configuration = configuration;
@@ -137,7 +135,7 @@ public class Machine : IDisposable {
             Memory.InitializeFonts();
             Memory.InitializeBiosData();
         }
-
+        
         
         Cpu = new Cpu(this, serviceProvider.GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
         //Video = new VideoHandler(this);
@@ -196,6 +194,7 @@ public class Machine : IDisposable {
             VgaCard);
         VideoBiosInt10Handler.InitRam();
         Register(VideoBiosInt10Handler);
+        Memory.Video = this.VideoBiosInt10Handler;
         BiosEquipmentDeterminationInt11Handler = new BiosEquipmentDeterminationInt11Handler(this);
         Register(BiosEquipmentDeterminationInt11Handler);
         SystemBiosInt15Handler = new SystemBiosInt15Handler(this);
