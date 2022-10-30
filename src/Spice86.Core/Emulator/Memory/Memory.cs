@@ -552,7 +552,7 @@ public class Memory {
             {
                 if (sizeof(T) == 1)
                 {
-                    byte? b = this.Video?.GetVramByte(fullAddress - VramAddress);
+                    byte? b = this._machine.VgaCard.GetVramByte(fullAddress - VramAddress);
                     if (b is null) {
                         byte fallback = 0;
                         return Unsafe.As<byte, T>(ref fallback);
@@ -563,7 +563,7 @@ public class Memory {
                 }
                 else if (sizeof(T) == 2)
                 {
-                    ushort? s = this.Video?.GetVramWord(fullAddress - VramAddress);
+                    ushort? s = this._machine.VgaCard.GetVramWord(fullAddress - VramAddress);
                     if (s is null) {
                         ushort fallback = 0;
                         return Unsafe.As<ushort, T>(ref fallback);
@@ -574,7 +574,7 @@ public class Memory {
                 }
                 else
                 {
-                    uint? i = this.Video?.GetVramDWord(fullAddress - VramAddress);
+                    uint? i = this._machine.VgaCard.GetVramDWord(fullAddress - VramAddress);
                     if (i is null) {
                         uint fallback = 0;
                         return Unsafe.As<uint, T>(ref fallback);
@@ -637,11 +637,11 @@ public class Memory {
             else if(this.Video is not null)
             {
                 if (sizeof(T) == 1) {
-                    this.Video.SetVramByte(fullAddress - VramAddress, Unsafe.As<T, byte>(ref value));
+                    this._machine.VgaCard.SetVramByte(fullAddress - VramAddress, Unsafe.As<T, byte>(ref value));
                 } else if (sizeof(T) == 2) {
-                    this.Video.SetVramWord(fullAddress - VramAddress, Unsafe.As<T, ushort>(ref value));
+                    this._machine.VgaCard.SetVramWord(fullAddress - VramAddress, Unsafe.As<T, ushort>(ref value));
                 } else {
-                    this.Video.SetVramDWord(fullAddress - VramAddress, Unsafe.As<T, uint>(ref value));
+                    this._machine.VgaCard.SetVramDWord(fullAddress - VramAddress, Unsafe.As<T, uint>(ref value));
                 }
             }
         }

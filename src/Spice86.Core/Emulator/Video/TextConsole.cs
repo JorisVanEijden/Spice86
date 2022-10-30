@@ -1,6 +1,8 @@
 ﻿namespace Spice86.Core.Emulator.Video;
 
 using System.Text;
+
+using Spice86.Core.Emulator.Devices.Video;
 using Spice86.Core.Emulator.InterruptHandlers.Video;
 using Spice86.Core.Emulator.Memory;
 
@@ -12,7 +14,7 @@ public class TextConsole
     private const byte ansiEscape = 0x1B;
     private readonly StringBuilder ansiCommand = new();
     private Point savedPosition = new(0, 24);
-    private readonly VideoBiosInt10Handler video;
+    private readonly VgaCard video;
     private readonly Bios bios;
     private bool boldEnabled;
     private bool negativeEnabled;
@@ -23,7 +25,7 @@ public class TextConsole
     /// </summary>
     /// <param name="video">Current VideoHandler instance.</param>
     /// <param name="bios">Current Bios instance.</param>
-    public TextConsole(VideoBiosInt10Handler video, Bios bios)
+    public TextConsole(VgaCard video, Bios bios)
     {
         unsafe
         {

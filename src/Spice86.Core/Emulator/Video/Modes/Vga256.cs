@@ -1,4 +1,5 @@
-﻿using Spice86.Core.Emulator.InterruptHandlers.Video;
+﻿using Spice86.Core.Emulator.Devices.Video;
+using Spice86.Core.Emulator.InterruptHandlers.Video;
 
 namespace Spice86.Core.Emulator.Video.Modes;
 
@@ -9,7 +10,7 @@ public sealed class Vga256 : VideoMode
 {
     private unsafe readonly byte* videoRam;
 
-    public Vga256(int width, int height, VideoBiosInt10Handler video) : base(width, height, 8, false, 8, VideoModeType.Graphics, video)
+    public Vga256(int width, int height, VgaCard video) : base(width, height, 8, false, 8, VideoModeType.Graphics, video)
     {
         unsafe
         {

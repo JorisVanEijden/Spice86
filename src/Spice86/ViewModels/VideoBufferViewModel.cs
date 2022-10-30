@@ -180,13 +180,13 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
     private VideoMode10h _lastUsedVideoMode = VideoMode10h.Text80x25x1;
 
     public unsafe void Draw(byte[] memory, Rgb[] palette, VideoMode10h videoMode) {
-        if (_machine is null || _bitmap is null || _machine?.VideoBiosInt10Handler.CurrentMode is null || _appClosing || _disposedValue || UIUpdateMethod is null) {
+        if (_machine is null || _bitmap is null || _machine?.VgaCard.CurrentMode is null || _appClosing || _disposedValue || UIUpdateMethod is null) {
             return;
         }
         StartDrawThreadIfNeeded();
         _lastUsedVideoMode = videoMode;
         _drawAction = new Action(() => {
-            _presenter = GetPresenter(_machine.VideoBiosInt10Handler.CurrentMode);
+            _presenter = GetPresenter(_machine.VgaCard.CurrentMode);
             if(_presenter is null) {
                 return;
             }

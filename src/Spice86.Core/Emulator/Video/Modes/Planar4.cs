@@ -1,4 +1,5 @@
-﻿using Spice86.Core.Emulator.InterruptHandlers.Video;
+﻿using Spice86.Core.Emulator.Devices.Video;
+using Spice86.Core.Emulator.InterruptHandlers.Video;
 
 using System.Runtime.CompilerServices;
 
@@ -14,7 +15,7 @@ public abstract class Planar4 : VideoMode
     private readonly Graphics graphics;
     private readonly Sequencer sequencer;
 
-    public Planar4(int width, int height, int bpp, int fontHeight, VideoModeType modeType, VideoBiosInt10Handler video)
+    public Planar4(int width, int height, int bpp, int fontHeight, VideoModeType modeType, VgaCard video)
         : base(width, height, bpp, true, fontHeight, modeType, video)
     {
         unsafe

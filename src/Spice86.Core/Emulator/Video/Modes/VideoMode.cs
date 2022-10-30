@@ -24,7 +24,7 @@ public abstract class VideoMode {
     private readonly AttributeController attributeController;
     private readonly VgaDac dac;
 
-    private protected VideoMode(int width, int height, int bpp, bool planar, int fontHeight, VideoModeType modeType, VideoBiosInt10Handler video) {
+    private protected VideoMode(int width, int height, int bpp, bool planar, int fontHeight, VideoModeType modeType, VgaCard video) {
         Width = width;
         Height = height;
         OriginalHeight = height;
@@ -32,7 +32,7 @@ public abstract class VideoMode {
         IsPlanar = planar;
         FontHeight = fontHeight;
         VideoModeType = modeType;
-        dac = video.Machine.VgaCard.VgaDac;
+        dac = video.VgaDac;
         crtController = video.CrtController;
         attributeController = video.AttributeController;
         unsafe {
@@ -200,12 +200,12 @@ public abstract class VideoMode {
     /// Performs any necessary initialization upon entering the video mode.
     /// </summary>
     /// <param name="video">The video device.</param>
-    internal virtual void InitializeMode(VideoBiosInt10Handler video) {
+    internal virtual void InitializeMode(VgaCard video) {
         video.Machine.Memory.Bios.CharacterPointHeight = (ushort)FontHeight;
 
         unsafe {
             byte* ptr = VideoRam;
-            for (int i = 0; i < VideoBiosInt10Handler.TotalVramBytes; i++) {
+            for (int i = 0; i < VgaCard.TotalVramBytes; i++) {
                 ptr[i] = 0;
             }
         }
@@ -238,7 +238,7 @@ public abstract class VideoMode {
     /// </summary>
     /// <param name="video">Current VideoHandler instance.</param>
     /// <returns>Pointer to the mode's video RAM.</returns>
-    internal unsafe virtual byte* GetVideoRamPointer(VideoBiosInt10Handler video) => video.RawView;
+    internal unsafe virtual byte* GetVideoRamPointer(VgaCard video) => video.RawView;
 
     /// <summary>
     /// Copies the current font from emulated memory into a buffer.

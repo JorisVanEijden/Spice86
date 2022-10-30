@@ -1,4 +1,5 @@
-﻿using Spice86.Core.Emulator.InterruptHandlers.Video;
+﻿using Spice86.Core.Emulator.Devices.Video;
+using Spice86.Core.Emulator.InterruptHandlers.Video;
 
 namespace Spice86.Core.Emulator.Video.Modes;
 
@@ -7,7 +8,7 @@ namespace Spice86.Core.Emulator.Video.Modes;
 /// </summary>
 public class EgaVga16 : Planar4
 {
-    public EgaVga16(int width, int height, int fontHeight, VideoBiosInt10Handler video)
+    public EgaVga16(int width, int height, int fontHeight, VgaCard video)
         : base(width, height, 4, fontHeight, VideoModeType.Graphics, video)
     {
     }

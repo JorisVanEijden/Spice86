@@ -1,4 +1,5 @@
-﻿using Spice86.Core.Emulator.InterruptHandlers.Video;
+﻿using Spice86.Core.Emulator.Devices.Video;
+using Spice86.Core.Emulator.InterruptHandlers.Video;
 using Spice86.Core.Emulator.Video.Modes;
 using Spice86.Shared;
 
@@ -30,7 +31,7 @@ public class GraphicsPresenterX : Presenter
 
         unsafe
         {
-            var bmp = new MemoryBitmap(stride * 4, VideoBiosInt10Handler.TotalVramBytes / (stride * 4));
+            var bmp = new MemoryBitmap(stride * 4, VgaCard.TotalVramBytes / (stride * 4));
             uint* destPtr = (uint*)bmp.PixelBuffer.ToPointer();
             uint* src = (uint*)this.VideoMode.VideoRam;
 
