@@ -24,7 +24,7 @@ public class GraphicsPresenter16 : Presenter
 
         unsafe
         {
-            ushort* srcPtr = (ushort*)((byte*)this.VideoMode.VideoRam.ToPointer() + this.VideoMode.StartOffset);
+            ushort* srcPtr = (ushort*)((byte*)this.VideoMode.VideoRam + this.VideoMode.StartOffset);
             uint* destPtr = (uint*)destination.ToPointer();
 
             for (int i = 0; i < totalPixels; i++) {

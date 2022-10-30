@@ -20,7 +20,7 @@ public class GraphicsPresenter2 : Presenter
 
         unsafe
         {
-            byte* srcPtr = (byte*)this.VideoMode.VideoRam.ToPointer();
+            byte* srcPtr = this.VideoMode.VideoRam;
             uint* destPtr = (uint*)destination.ToPointer();
 
             uint* palette = stackalloc uint[4];

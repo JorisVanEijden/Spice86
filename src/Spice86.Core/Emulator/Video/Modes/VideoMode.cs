@@ -35,7 +35,9 @@ public abstract class VideoMode {
         dac = video.Machine.VgaCard.VgaDac;
         crtController = video.CrtController;
         attributeController = video.AttributeController;
-        VideoRam = GetVideoRamPointer(video);
+        unsafe {
+            VideoRam = GetVideoRamPointer(video);
+        }
 
         InitializeFont(video.Machine.Memory);
     }
@@ -49,7 +51,9 @@ public abstract class VideoMode {
         dac = baseMode.dac;
         crtController = baseMode.crtController;
         attributeController = baseMode.attributeController;
-        VideoRam = baseMode.VideoRam;
+        unsafe {
+            VideoRam = baseMode.VideoRam;
+        }
     }
 
     /// <summary>
@@ -111,7 +115,7 @@ public abstract class VideoMode {
     /// <summary>
     /// Gets a pointer to the emulated video RAM.
     /// </summary>
-    public IntPtr VideoRam { get; }
+    public unsafe byte* VideoRam { get; }
     /// <summary>
     /// Gets the current EGA/VGA compatibility map.
     /// </summary>
@@ -200,7 +204,7 @@ public abstract class VideoMode {
         video.Machine.Memory.Bios.CharacterPointHeight = (ushort)FontHeight;
 
         unsafe {
-            byte* ptr = (byte*)VideoRam.ToPointer();
+            byte* ptr = VideoRam;
             for (int i = 0; i < VideoBiosInt10Handler.TotalVramBytes; i++) {
                 ptr[i] = 0;
             }
@@ -234,7 +238,7 @@ public abstract class VideoMode {
     /// </summary>
     /// <param name="video">Current VideoHandler instance.</param>
     /// <returns>Pointer to the mode's video RAM.</returns>
-    internal virtual IntPtr GetVideoRamPointer(VideoBiosInt10Handler video) => video.VideoRam;
+    internal unsafe virtual byte* GetVideoRamPointer(VideoBiosInt10Handler video) => video.RawView;
 
     /// <summary>
     /// Copies the current font from emulated memory into a buffer.

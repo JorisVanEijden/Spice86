@@ -1,6 +1,9 @@
 ﻿namespace Spice86.Core.Emulator.Video;
 
-public static class Ports
+/// <summary>
+/// http://www.osdever.net/FreeVGA/vga/extreg.htm#3xAR
+/// </summary>
+public static class VideoPorts
 {
     public const int CrtControllerAddress = 0x03B4;
     public const int CrtControllerData = 0x03B5;

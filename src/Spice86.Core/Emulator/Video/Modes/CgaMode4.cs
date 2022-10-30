@@ -15,7 +15,7 @@ public class CgaMode4 : VideoMode
     {
         unsafe
         {
-            this.videoRam = (byte*)video.VideoRam.ToPointer();
+            this.videoRam = video.RawView;
         }
     }
 

@@ -26,8 +26,8 @@ public class TextPresenter : Presenter
     {
         unsafe
         {
-            this.videoRam = (byte*)videoMode.VideoRam.ToPointer();
-            byte* srcPtr = (byte*)videoMode.VideoRam.ToPointer();
+            this.videoRam = (byte*)videoMode.VideoRam;
+            byte* srcPtr = (byte*)videoMode.VideoRam;
 
             this.pages = new ushort*[8];
             for (int i = 0; i < this.pages.Length; i++) {

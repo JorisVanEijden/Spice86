@@ -32,7 +32,7 @@ public class GraphicsPresenterX : Presenter
         {
             var bmp = new MemoryBitmap(stride * 4, VideoBiosInt10Handler.TotalVramBytes / (stride * 4));
             uint* destPtr = (uint*)bmp.PixelBuffer.ToPointer();
-            uint* src = (uint*)this.VideoMode.VideoRam.ToPointer();
+            uint* src = (uint*)this.VideoMode.VideoRam;
 
             int max = Math.Min(height, lineCompare + 1);
             int wordWidth = stride;
@@ -74,7 +74,7 @@ public class GraphicsPresenterX : Presenter
         unsafe
         {
             uint* destPtr = (uint*)destination.ToPointer();
-            uint* src = (uint*)this.VideoMode.VideoRam.ToPointer();
+            uint* src = (uint*)this.VideoMode.VideoRam;
 
             int max = Math.Min(height, lineCompare + 1);
             int wordWidth = width / 4;

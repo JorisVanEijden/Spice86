@@ -22,7 +22,7 @@ public class TextMode : VideoMode
     {
         unsafe
         {
-            this.videoRam = (byte*)video.VideoRam.ToPointer();
+            this.videoRam = (byte*)video.RawView;
             byte* vram = this.videoRam;
             this.planes = (byte**)this.planesBuffer.ToPointer();
 

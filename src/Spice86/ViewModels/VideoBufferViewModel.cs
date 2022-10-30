@@ -11,6 +11,10 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
+using Spice86.Core;
+using Spice86.Core.Emulator.Video.Modes;
+using Spice86.Core.Emulator.Video.Rendering;
+using Spice86.Core.Emulator.VM;
 using Spice86.Shared;
 using Spice86.Shared.Interfaces;
 using Spice86.Views;
@@ -19,6 +23,8 @@ using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 
+// TODO: Make all video modes work with Gdb video buffer start offset relative to the current video mode
+// TODO: Remove all pointers and pointers arithmetic everywhere, except for the ILockedFramebuffer stuff in this file.
 /// <inheritdoc />
 public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBufferViewModel, IComparable<VideoBufferViewModel>, IDisposable {
     private bool _disposedValue;
@@ -28,6 +34,10 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
     private bool _exitDrawThread;
 
     private readonly ManualResetEvent _manualResetEvent = new(false);
+
+    private readonly Machine? _machine;
+
+    private Presenter? _presenter;
 
     /// <summary>
     /// For AvaloniaUI Designer
@@ -44,7 +54,8 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
         _frameRenderTimeWatch = new Stopwatch();
     }
 
-    public VideoBufferViewModel(double scale, int width, int height, uint address, int index, bool isPrimaryDisplay) {
+    public VideoBufferViewModel(Machine machine, double scale, int width, int height, uint address, int index, bool isPrimaryDisplay) {
+        _machine = machine;
         _isPrimaryDisplay = isPrimaryDisplay;
         Width = width;
         Height = height;
@@ -169,27 +180,94 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
     private VideoMode10h _lastUsedVideoMode = VideoMode10h.Text80x25x1;
 
     public unsafe void Draw(byte[] memory, Rgb[] palette, VideoMode10h videoMode) {
-        if (_appClosing || _disposedValue || UIUpdateMethod is null) {
+        if (_machine is null || _bitmap is null || _machine?.VideoBiosInt10Handler.CurrentMode is null || _appClosing || _disposedValue || UIUpdateMethod is null) {
             return;
         }
         StartDrawThreadIfNeeded();
-        if (_drawAction is null || _lastUsedVideoMode != videoMode) {
-            _lastUsedVideoMode = videoMode;
-            _drawAction = new Action(() => {
-                switch (videoMode) {
-                    case VideoMode10h.ColorGraphics640x350x4:
-                        DrawVga640x350x4(memory, palette);
-                        break;
-                    case VideoMode10h.Graphics320x200x8:
-                        DrawVga320x200x8(memory, palette);
-                        break;
-                    default:
-                        break;
-                }
-                UpdateGui();
-            });
-        }
+        _lastUsedVideoMode = videoMode;
+        _drawAction = new Action(() => {
+            _presenter = GetPresenter(_machine.VideoBiosInt10Handler.CurrentMode);
+            if(_presenter is null) {
+                return;
+            }
+            EnsureRenderTarget(_presenter);
+            using ILockedFramebuffer buf = _bitmap.Lock();
+            _presenter.Update(buf.Address);
+            UpdateGui();
+        });
         WaitForNextCall();
+    }
+
+    private void EnsureRenderTarget(Presenter presenter) {
+        if (this._bitmap != null && presenter.TargetWidth == this._bitmap.PixelSize.Width && presenter.TargetHeight == this._bitmap.PixelSize.Height) {
+            return;
+        }
+        this._bitmap?.Dispose();
+        this._bitmap = new
+            (new(presenter.TargetWidth,
+            presenter.TargetHeight),
+            new(96, 96),
+            PixelFormat.Bgra8888,
+            AlphaFormat.Unpremul);
+    }
+
+
+    private Presenter? GetPresenter(VideoMode? videoMode) {
+        if(videoMode is null) {
+            return null;
+        }
+
+        if (videoMode.VideoModeType == VideoModeType.Text) {
+            return new TextPresenter(videoMode, ToNativePixelFormat);
+        } else {
+            return videoMode.BitsPerPixel switch {
+                2 => new GraphicsPresenter2(videoMode, ToNativePixelFormat),
+                4 => new GraphicsPresenter4(videoMode, ToNativePixelFormat),
+                8 when videoMode.IsPlanar => new GraphicsPresenterX(videoMode, ToNativePixelFormat),
+                8 when !videoMode.IsPlanar => new GraphicsPresenter8(videoMode, ToNativePixelFormat),
+                16 => new GraphicsPresenter16(videoMode, ToNativePixelFormat),
+                _ => null
+            };
+        }
+    }
+
+
+    private uint ToNativePixelFormat(uint pixel) {
+        if (this.Bitmap is null) {
+            return pixel;
+        }
+        using ILockedFramebuffer buf = this.Bitmap.Lock();
+        return buf.Format switch {
+            PixelFormat.Rgba8888 => ToRgba(pixel),
+            PixelFormat.Rgb565 => ToRgba(pixel),
+            PixelFormat.Bgra8888 => ToArgb(pixel),
+            _ => pixel
+        };
+    }
+
+
+    private static uint ToRgba(uint pixel) {
+        var color = System.Drawing.Color.FromArgb((int)pixel);
+        return (uint)(color.R << 16 | color.G << 8 | color.B) | 0xFF000000;
+    }
+
+    private static uint ToBgra(uint pixel) {
+        var color = System.Drawing.Color.FromArgb((int)pixel);
+        return (uint)(color.B << 16 | color.G << 8 | color.R) | 0xFF000000;
+    }
+
+    private static uint ToArgb(uint pixel) {
+        var color = System.Drawing.Color.FromArgb((int)pixel);
+        return 0xFF000000 | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B;
+    }
+
+    private void UpdateGui() {
+        Dispatcher.UIThread.Post(() => {
+            UIUpdateMethod?.Invoke();
+            FramesRendered++;
+        }, DispatcherPriority.Render);
+        _frameRenderTimeWatch.Stop();
+        LastFrameRenderTimeMs = _frameRenderTimeWatch.ElapsedMilliseconds;
     }
 
     private unsafe void WaitForNextCall() {
@@ -206,148 +284,6 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
             };
             _drawThread.Start();
         }
-    }
-
-    // TODO: Inject graphics presenters for all the supported video mdoes
-    // TODO: extend the caller to recognize those other video modes
-    // TODO: use a fixed pointer over the memory param (temporary for code import)
-    // TODO: Make them all work with Gdb video buffer start offset relative to the current video mode
-    // TODO: Remove all pointers and pointers arithmetic everywhere, except for the ILockedFramebuffer stuff in this file.
-    private unsafe void DrawVga640x350x4(byte[] memory, Rgb[] palette) {
-        if (Bitmap is null) {
-            return;
-        }
-        _frameRenderTimeWatch.Restart();
-        ILockedFramebuffer pixels = Bitmap.Lock();
-        const int width = 640;
-        const int height = 350;
-
-        uint* firstPixelAddress = (uint*)pixels.Address;
-        const int stride = 80;
-        const int horizontalPan = 0;
-        const int startOffset = 0;
-
-        int safeWidth = Math.Min(stride, width / 8);
-        const int bitPan = horizontalPan % 8;
-
-        Span<byte> src = new Span<byte>(memory);
-        uint* destPtr = firstPixelAddress;
-
-        Span<Rgb> paletteSpan = new Span<Rgb>(palette);
-        fixed (byte* srcPtr = src) {
-            fixed (Rgb* paletteMap = paletteSpan) {
-                const int destStart = 0;
-
-                for (int split = 0; split < 2; split++) {
-                    for (int y = 0; y < height; y++) {
-                        int srcPos = ((stride * y) + startOffset + (horizontalPan / 8)) & 0xFFFF;
-                        int destPos = (width * y) + destStart;
-
-                        for (int i = bitPan; i < 8; i++) {
-                            destPtr[destPos++] = palette[paletteMap[UnpackIndex(srcPtr[srcPos], 7 - i)]];
-                        }
-
-                        srcPos++;
-
-                        for (int xb = 1; xb < safeWidth; xb++) {
-                            // vram is stored as:
-                            // [p1byte] [p2byte] [p3byte] [p4byte]
-                            // to build index for nibble one:
-                            // p1[0] p2[0] p3[0] p4[0]
-
-                            uint p = srcPtr[srcPos & 0xFFFF];
-                            int palIndex = UnpackIndex(p, 0);
-                            destPtr[destPos + 7] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 1);
-                            destPtr[destPos + 6] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 2);
-                            destPtr[destPos + 5] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 3);
-                            destPtr[destPos + 4] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 4);
-                            destPtr[destPos + 3] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 5);
-                            destPtr[destPos + 2] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 6);
-                            destPtr[destPos + 1] = palette[paletteMap[palIndex]];
-
-                            palIndex = UnpackIndex(p, 7);
-                            destPtr[destPos] = palette[paletteMap[palIndex]];
-
-                            destPos += 8;
-                            srcPos++;
-                        }
-
-                        srcPos &= 0xFFFF;
-
-                        for (int i = 0; i < bitPan; i++) {
-                            destPtr[destPos++] = palette[paletteMap[UnpackIndex(srcPtr[srcPos], 7 - i)]];
-                        }
-                    }
-
-                    // if (height < this.VideoMode.Height)
-                    // {
-                    //     startOffset = 0;
-                    //     height = this.VideoMode.Height - this.VideoMode.LineCompare - 1;
-                    //     destStart = this.VideoMode.LineCompare * width;
-                    // }
-                    // else
-                    // {
-                    //     break;
-                    // }
-                }
-            }
-        }
-    }
-
-    private static int UnpackIndex(uint value, int index) {
-        if (System.Runtime.Intrinsics.X86.Bmi2.IsSupported) {
-            return (int)System.Runtime.Intrinsics.X86.Bmi2.ParallelBitExtract(value, 0x01010101u << index);
-        } else {
-            return (int)(((value & (1u << index)) >> index) | ((value & (0x100u << index)) >> (7 + index)) | ((value & (0x10000u << index)) >> (14 + index)) | ((value & (0x1000000u << index)) >> (21 + index)));
-        }
-    }
-
-    private unsafe void DrawVga320x200x8(byte[] memory, Rgb[] palette) {
-        if (Bitmap is null) {
-            return;
-        }
-        _frameRenderTimeWatch.Restart();
-        ILockedFramebuffer pixels = Bitmap.Lock();
-        uint* firstPixelAddress = (uint*)pixels.Address;
-        int rowBytes = Width;
-        uint memoryAddress = Address;
-        uint* currentRow = firstPixelAddress;
-        for (int row = 0; row < Height; row++) {
-            uint* startOfLine = currentRow;
-            uint* endOfLine = currentRow + Width;
-            for (uint* column = startOfLine; column < endOfLine; column++) {
-                byte colorIndex = memory[memoryAddress];
-                Rgb pixel = palette[colorIndex];
-                uint argb = pixel.ToArgb();
-                if (pixels.Format == PixelFormat.Rgba8888) {
-                    argb = pixel.ToRgba();
-                }
-                *column = argb;
-                memoryAddress++;
-            }
-            currentRow += rowBytes;
-        }
-    }
-
-    private void UpdateGui() {
-        Dispatcher.UIThread.Post(() => {
-            UIUpdateMethod?.Invoke();
-            FramesRendered++;
-        }, DispatcherPriority.Render);
-        _frameRenderTimeWatch.Stop();
-        LastFrameRenderTimeMs = _frameRenderTimeWatch.ElapsedMilliseconds;
     }
 
     [ObservableProperty]

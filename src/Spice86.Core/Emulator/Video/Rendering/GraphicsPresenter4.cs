@@ -35,7 +35,7 @@ public class GraphicsPresenter4 : Presenter
 
         unsafe
         {
-            uint* srcPtr = (uint*)this.VideoMode.VideoRam.ToPointer();
+            uint* srcPtr = (uint*)this.VideoMode.VideoRam;
             uint* destPtr = (uint*)destination.ToPointer();
 
             fixed (byte* paletteMap = this.VideoMode.InternalPalette)

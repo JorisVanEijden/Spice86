@@ -27,7 +27,7 @@ public class TextConsole
     {
         unsafe
         {
-            displayData = (ushort*)video.VideoRam.ToPointer();
+            displayData = (ushort*)video.RawView;
         }
 
         this.video = video;

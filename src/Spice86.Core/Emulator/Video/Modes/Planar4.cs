@@ -19,7 +19,7 @@ public abstract class Planar4 : VideoMode
     {
         unsafe
         {
-            this.videoRam = (uint*)video.VideoRam.ToPointer();
+            this.videoRam = (uint*)video.RawView;
         }
 
         this.graphics = video.Graphics;

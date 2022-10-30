@@ -3,7 +3,8 @@
 using System;
 using System.Collections.Generic;
 
-internal static class DictionaryExtensions {
+public static class DictionaryExtensions {
+
     /// <summary>
     /// Like "GetValueOrDefault" but adds the value to the dict if not found.<br/>
     /// </summary>

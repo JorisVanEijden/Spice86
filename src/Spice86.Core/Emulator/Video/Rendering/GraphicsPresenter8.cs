@@ -22,7 +22,7 @@ public class GraphicsPresenter8 : Presenter
     {
         uint totalPixels = (uint)this.VideoMode.Width * (uint)this.VideoMode.Height;
         ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
-        byte* srcPtr = (byte*)this.VideoMode.VideoRam.ToPointer() + (uint)this.VideoMode.StartOffset;
+        byte* srcPtr = (byte*)this.VideoMode.VideoRam + (uint)this.VideoMode.StartOffset;
         uint* destPtr = (uint*)destination.ToPointer();
 
         int height = this.VideoMode.Height;

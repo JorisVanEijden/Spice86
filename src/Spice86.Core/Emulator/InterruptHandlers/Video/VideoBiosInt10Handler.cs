@@ -20,7 +20,6 @@ using System.Runtime.InteropServices;
 /// <summary>
 /// TODO: Make unused / missing code used.
 /// TODO: Remove pointers (or at least use a private fixed pointer for VideoMemory, like in Memory).
-/// TODO: Remove Page
 /// TODO: Keep this overridable, don't put anything in Run method.
 /// </summary>
 public class VideoBiosInt10Handler : InterruptHandler {
@@ -34,12 +33,6 @@ public class VideoBiosInt10Handler : InterruptHandler {
     private static readonly long HorizontalPeriod = (long)((1000.0 / 60.0) / 480.0 * Pic.StopwatchTicksPerMillisecond);
     private static readonly long RefreshRate = (long)((1000.0 / 60.0) * Pic.StopwatchTicksPerMillisecond);
     private static readonly long VerticalBlankingTime = RefreshRate / 40;
-    private AttributeControllerRegister attributeRegister;
-    private CrtControllerRegister crtRegister;
-    private bool defaultPaletteLoading = true;
-    private GraphicsRegister graphicsRegister;
-    private SequencerRegister sequencerRegister;
-    private int verticalTextResolution = 16;
     private readonly VgaCard _vgaCard;
 
     /// <summary>
@@ -52,14 +45,18 @@ public class VideoBiosInt10Handler : InterruptHandler {
     /// </summary>
     public const ushort StaticFunctionalityTableSegment = 0x0100;
 
+    public byte[] VideoRam { get; private set; }
+
     public VideoBiosInt10Handler(Machine machine, ILogger logger, VgaCard vgaCard) : base(machine) {
         _logger = logger;
-        _logger = logger;
         _vgaCard = vgaCard;
-        FillDispatchTable();
+        this.VideoRam = new byte[TotalVramBytes];
         unsafe {
-            this.VideoRam = new IntPtr(NativeMemory.AllocZeroed(TotalVramBytes));
+            fixed (byte* ramPtr = this.VideoRam) {
+                this.RawView = ramPtr;
+            }
         }
+        FillDispatchTable();
         Memory memory = machine.Memory;
         memory.SetUInt32(StaticFunctionalityTableSegment, 0, 0x000FFFFF); // supports all video modes
         memory.SetByte(StaticFunctionalityTableSegment, 0x07, 0x07); // supports all scanlines
@@ -70,7 +67,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
     /// <summary>
     /// Gets a pointer to the emulated video RAM.
     /// </summary>
-    public IntPtr VideoRam { get; }
+    public unsafe byte* RawView { get; private set; }
     public Machine Machine => _machine;
 
     public void GetBlockOfDacColorRegisters() {
@@ -145,8 +142,8 @@ public class VideoBiosInt10Handler : InterruptHandler {
     }
 
     public void InitRam() {
-        SetVideoModeValue(VgaCard.MODE_320_200_256);
-        _memory.SetUint16(CRT_IO_PORT_ADDRESS_IN_RAM, VgaCard.CRT_IO_PORT);
+        SetVideoModeValue((byte)VideoMode10h.Text80x25x1);
+        _memory.SetUint16(CRT_IO_PORT_ADDRESS_IN_RAM, VideoPorts.CrtControllerAddressAlt);
     }
 
     public override void Run() {
@@ -217,6 +214,9 @@ public class VideoBiosInt10Handler : InterruptHandler {
     }
 
     private void FillDispatchTable() {
+        //TODO: Replace values by Functions enums (VgaFunctions, EgaFunctions...) from VideoController.HandleInterrupt
+        //TODO: Move CtrController and other controllers to the VgaCard
+        //TODO: Extended VgaCard to implement all ReasdByte/WriteByte code for Input and Output ports
         _dispatchTable.Add(0x00, new Callback(0x00, SetVideoMode));
         _dispatchTable.Add(0x01, new Callback(0x01, SetCursorType));
         _dispatchTable.Add(0x02, new Callback(0x02, SetCursorPosition));
@@ -339,7 +339,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
     private void ChangeVerticalEnd() {
         // this is a hack
         int newEnd = this.CrtController.VerticalDisplayEnd | ((this.CrtController.Overflow & (1 << 1)) << 7) | ((this.CrtController.Overflow & (1 << 6)) << 3);
-        if (this.CurrentMode is Emulator.Video.Modes.Unchained256) {
+        if (this.CurrentMode is Unchained256) {
             newEnd /= 2;
         } else {
             newEnd = newEnd switch {
@@ -358,7 +358,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
     /// Sets the current mode to unchained mode 13h.
     /// </summary>
     private void EnterModeX() {
-        var mode = new Emulator.Video.Modes.Unchained256(320, 200, this);
+        var mode = new Unchained256(320, 200, this);
         CrtController.Offset = 320 / 8;
         this.CurrentMode = mode;
         _machine.OnVideoModeChanged(EventArgs.Empty);
@@ -517,7 +517,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
     /// Sets the current mode to text mode 80x50.
     /// </summary>
     private void SwitchTo80x50TextMode() {
-        var mode = new Emulator.Video.Modes.TextMode(80, 50, 8, this);
+        var mode = new TextMode(80, 50, 8, this);
         this.CurrentMode = mode;
         _machine.OnVideoModeChanged(EventArgs.Empty);
     }

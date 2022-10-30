@@ -18,16 +18,6 @@ using System.Text;
 /// <summary> Addressable memory of the machine. </summary>
 public class Memory {
     /// <summary>
-    /// Size of the page address cache in dwords.
-    /// </summary>
-    private const int PageAddressCacheSize = 1 << 20;
-
-    /// <summary>
-    /// Bit in page table entry which indicates that a page is present.
-    /// </summary>
-    private const uint PagePresent = 1 << 0;
-
-    /// <summary>
     /// Starting physical address of video RAM.
     /// </summary>
     private const int VramAddress = 0xA000 << 4;
@@ -218,7 +208,7 @@ public class Memory {
     /// <summary>
     /// Pointer to the start of the emulated physical memory.
     /// </summary>
-    internal unsafe byte* RawView;
+    internal unsafe byte* RawView { get; private set; }
 
     public Span<byte> GetSpan(uint segment, uint offset, int length) {
         unsafe {

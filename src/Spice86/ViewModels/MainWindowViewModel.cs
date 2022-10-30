@@ -132,7 +132,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IGui, IDispo
     private string? _mainTitle;
 
     public void AddBuffer(uint address, double scale, int bufferWidth, int bufferHeight, bool isPrimaryDisplay = false) {
-        VideoBufferViewModel videoBuffer = new VideoBufferViewModel(scale, bufferWidth, bufferHeight, address, VideoBuffers.Count, isPrimaryDisplay);
+        if(_programExecutor is null) {
+            return;
+        }
+        VideoBufferViewModel videoBuffer = new VideoBufferViewModel(_programExecutor.Machine, scale, bufferWidth, bufferHeight, address, VideoBuffers.Count, isPrimaryDisplay);
         Dispatcher.UIThread.Post(
             () => {
                 if(!VideoBuffers.Any(x => x.Address == videoBuffer.Address)) {

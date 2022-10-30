@@ -13,7 +13,7 @@ public sealed class Vga256 : VideoMode
     {
         unsafe
         {
-            this.videoRam = (byte*)video.VideoRam.ToPointer();
+            this.videoRam = video.RawView;
         }
     }
 

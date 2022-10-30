@@ -1,6 +1,4 @@
-﻿using Spice86.Core.DI;
-
-namespace Spice86.Core.Emulator.Devices.Video;
+﻿namespace Spice86.Core.Emulator.Devices.Video;
 
 using Serilog;
 using Spice86.Logging;
@@ -12,6 +10,8 @@ using Spice86.Core.Emulator.Memory;
 using Spice86.Core.Emulator.VM;
 using Spice86.Core.Emulator.Errors;
 using System.Linq;
+using Spice86.Core.Emulator.Video;
+using Spice86.Core.DI;
 
 /// <summary>
 /// Implementation of VGA card, currently only supports mode 0x13.<br/>
@@ -22,18 +22,6 @@ using System.Linq;
 /// </summary>
 public class VgaCard : DefaultIOPortHandler {
     private readonly ILogger _logger;
-
-    public const ushort CRT_IO_PORT = 0x03D4;
-    // http://www.osdever.net/FreeVGA/vga/extreg.htm#3xAR
-    public const ushort VGA_SEQUENCER_ADDRESS_REGISTER_PORT = 0x03C4;
-    public const ushort VGA_SEQUENCER_DATA_REGISTER_PORT = 0x03C5;
-    public const ushort VGA_READ_INDEX_PORT = 0x03C7;
-    public const ushort VGA_WRITE_INDEX_PORT = 0x03C8;
-    public const ushort VGA_RGB_DATA_PORT = 0x3C9;
-    public const ushort GRAPHICS_ADDRESS_REGISTER_PORT = 0x3CE;
-    public const ushort VGA_STATUS_REGISTER_PORT = 0x03DA;
-
-    public const byte MODE_320_200_256 = 0x13;
 
     // Means the CRT is busy drawing a line, tells the program it should not draw
     private const byte StatusRegisterRetraceInactive = 0;
@@ -49,6 +37,14 @@ public class VgaCard : DefaultIOPortHandler {
 
     private readonly IGui? _gui;
     private byte _crtStatusRegister = StatusRegisterRetraceActive;
+
+    private AttributeControllerRegister attributeRegister;
+    private CrtControllerRegister crtRegister;
+    private bool defaultPaletteLoading = true;
+    private GraphicsRegister graphicsRegister;
+    private SequencerRegister sequencerRegister;
+    private int verticalTextResolution = 16;
+
 
     public VgaCard(Machine machine, ILogger logger, IGui? gui, Configuration configuration) : base(machine, configuration) {
         _logger = logger;
@@ -87,11 +83,11 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public override byte ReadByte(int port) {
-        if (port == VGA_READ_INDEX_PORT) {
+        if (port == VideoPorts.DacStateRead) {
             return GetVgaReadIndex();
-        } else if (port == VGA_STATUS_REGISTER_PORT) {
+        } else if (port == VideoPorts.InputStatus1ReadAlt) {
             return GetStatusRegisterPort();
-        } else if (port == VGA_RGB_DATA_PORT) {
+        } else if (port == VideoPorts.DacData) {
             return RgbDataRead();
         }
 
@@ -99,13 +95,13 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public override void WriteByte(int port, byte value) {
-        if (port == VGA_READ_INDEX_PORT) {
+        if (port == VideoPorts.DacStateRead) {
             SetVgaReadIndex(value);
-        } else if (port == VGA_WRITE_INDEX_PORT) {
+        } else if (port == VideoPorts.DacAddressWriteMode) {
             SetVgaWriteIndex(value);
-        } else if (port == VGA_RGB_DATA_PORT) {
+        } else if (port == VideoPorts.DacData) {
             RgbDataWrite(value);
-        } else if (port == VGA_STATUS_REGISTER_PORT) {
+        } else if (port == VideoPorts.InputStatus1ReadAlt) {
             bool vsync = (value & 0b100) != 1;
             if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
                 _logger.Information("Vsync value set to {@VSync} (this is not implemented)", vsync);
@@ -116,13 +112,13 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public override void InitPortHandlers(IOPortDispatcher ioPortDispatcher) {
-        ioPortDispatcher.AddIOPortHandler(VGA_SEQUENCER_ADDRESS_REGISTER_PORT, this);
-        ioPortDispatcher.AddIOPortHandler(VGA_SEQUENCER_DATA_REGISTER_PORT, this);
-        ioPortDispatcher.AddIOPortHandler(VGA_READ_INDEX_PORT, this);
-        ioPortDispatcher.AddIOPortHandler(VGA_WRITE_INDEX_PORT, this);
-        ioPortDispatcher.AddIOPortHandler(VGA_RGB_DATA_PORT, this);
-        ioPortDispatcher.AddIOPortHandler(GRAPHICS_ADDRESS_REGISTER_PORT, this);
-        ioPortDispatcher.AddIOPortHandler(VGA_STATUS_REGISTER_PORT, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.SequencerAddress, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.SequencerData, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.DacStateRead, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.DacAddressWriteMode, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.DacData, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.GraphicsControllerAddress, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.InputStatus1ReadAlt, this);
     }
 
     public byte RgbDataRead() {
@@ -180,19 +176,53 @@ public class VgaCard : DefaultIOPortHandler {
             }
         }
         CurrentVideoMode = (VideoMode10h)mode;
-        const int videoHeight = 200;
-        const int videoWidth = 320;
         switch (CurrentVideoMode)
         {
             case VideoMode10h.Text40x25x1:
                 _gui?.SetResolution(40, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
+            case VideoMode10h.Text80x25x1:
+                _gui?.SetResolution(80, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.MonochromeText80x25x4:
+                _gui?.SetResolution(80, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.ColorText80x25x4:
+                _gui?.SetResolution(80, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.ColorGraphics320x200x2A:
+                _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.ColorGraphics320x200x2B:
+                _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.ColorGraphics320x200x4:
+                _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.ColorGraphics640x200x4:
+                _gui?.SetResolution(640, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
             case VideoMode10h.ColorGraphics640x350x4:
                 _gui?.SetResolution(640, 350, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
             case VideoMode10h.Graphics320x200x8:
-                _gui?.SetResolution(videoWidth, videoHeight, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-            break;
+                _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.ColorText40x25x4:
+                _gui?.SetResolution(40, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.Graphics640x200x1:
+                _gui?.SetResolution(640, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.Graphics640x350x1:
+                _gui?.SetResolution(640, 350, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.Graphics640x480x1:
+                _gui?.SetResolution(640, 480, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
+            case VideoMode10h.Graphics640x480x4:
+                _gui?.SetResolution(640, 480, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
+                break;
             default:
                 throw new UnrecoverableException($"Unimplemented video mode {CurrentVideoMode}");
         }

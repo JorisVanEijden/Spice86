@@ -33,7 +33,7 @@ public class DualPic : DefaultIOPortHandler {
     public static long GlobalTimerTicks => Stopwatch.GetTimestamp();
 
     /// <summary>
-    /// The number of <see cref="System.Diagnostics.Stopwatch"/> timer ticks per millisecond.
+    /// The number of <see cref="Stopwatch"/> timer ticks per millisecond.
     /// </summary>
     public static readonly long StopwatchTicksPerMillisecond = Stopwatch.Frequency / 1000;
 
