@@ -23,6 +23,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
     public const int BiosVideoMode = 0x49;
     public static readonly uint BIOS_VIDEO_MODE_ADDRESS = MemoryUtils.ToPhysicalAddress(MemoryMap.BiosDataAreaSegment, BiosVideoMode);
     public static readonly uint CRT_IO_PORT_ADDRESS_IN_RAM = MemoryUtils.ToPhysicalAddress(MemoryMap.BiosDataAreaSegment, MemoryMap.BiosDataAreaOffsetCrtIoPort);
+    private readonly VgaCard _vgaCard;
     private readonly ILogger _logger;
     private readonly byte _currentDisplayPage = 0;
     private byte _numberOfScreenColumns = 80;
@@ -30,17 +31,23 @@ public class VideoBiosInt10Handler : InterruptHandler {
     private static readonly long HorizontalPeriod = (long)((1000.0 / 60.0) / 480.0 * Pic.StopwatchTicksPerMillisecond);
     private static readonly long RefreshRate = (long)((1000.0 / 60.0) * Pic.StopwatchTicksPerMillisecond);
     private static readonly long VerticalBlankingTime = RefreshRate / 40;
-    private readonly VgaCard _vgaCard;
 
     public VideoBiosInt10Handler(Machine machine, ILogger logger, VgaCard vgaCard) : base(machine) {
         _logger = logger;
         _vgaCard = vgaCard;
-
         FillDispatchTable();
-        Memory memory = machine.Memory;
+        InitializeStaticFunctionalityTable();
     }
 
-    public Machine Machine => _machine;
+    /// <summary>
+    /// Writes values to the static functionality table in emulated memory.
+    /// </summary>
+    private void InitializeStaticFunctionalityTable() {
+        Memory memory = _memory;
+        memory.SetUInt32(VgaCard.StaticFunctionalityTableSegment, 0, 0x000FFFFF); // supports all video modes
+        memory.SetByte(VgaCard.StaticFunctionalityTableSegment, 0x07, 0x07); // supports all scanlines
+    }
+
 
     public void GetBlockOfDacColorRegisters() {
         ushort firstRegisterToGet = _state.BX;
@@ -52,6 +59,140 @@ public class VideoBiosInt10Handler : InterruptHandler {
         uint colorValuesAddress = MemoryUtils.ToPhysicalAddress(_state.ES, _state.DX);
         _vgaCard.GetBlockOfDacColorRegisters(firstRegisterToGet, numberOfColorsToGet, colorValuesAddress);
     }
+
+
+    /// <summary>
+    /// Gets information about BIOS fonts.
+    /// </summary>
+    private void GetFontInfo() {
+        if (_vgaCard.CurrentMode is null) {
+            return;
+        }
+        SegmentedAddress address = _state.BH switch {
+            0x00 => _memory.GetRealModeInterruptAddress(0x1F),
+            0x01 => _memory.GetRealModeInterruptAddress(0x43),
+            0x02 or 0x05 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x14Offset),
+            0x03 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset),
+            0x04 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset + 128 * 8),
+            _ => new SegmentedAddress(Memory.FontSegment, Memory.Font8x16Offset),
+        };
+
+        _state.ES = address.Segment;
+        _state.BP = address.Offset;
+        _state.CX = (ushort)_vgaCard.CurrentMode.FontHeight;
+        _state.DL = _memory.Bios.ScreenRows;
+    }
+
+    /// <summary>
+    /// Writes a table of information about the current video mode.
+    /// </summary>
+    private void GetFunctionalityInfo() {
+        if (_vgaCard.CurrentMode is null) {
+            return;
+        }
+        ushort segment = _state.ES;
+        ushort offset = _state.DI;
+
+        Memory memory = _memory;
+        Bios bios = memory.Bios;
+
+        Point cursorPos = _vgaCard.TextConsole.CursorPosition;
+
+        memory.SetUInt32(segment, offset, VgaCard.StaticFunctionalityTableSegment << 16); // SFT address
+        memory.SetByte(segment, offset + 0x04u, (byte)bios.VideoMode); // video mode
+        memory.SetUInt16(segment, offset + 0x05u, bios.ScreenColumns); // columns
+        memory.SetUInt32(segment, offset + 0x07u, 0); // regen buffer
+        for (uint i = 0; i < 8; i++) {
+            memory.SetByte(segment, offset + 0x0Bu + i * 2u, (byte)cursorPos.X); // text cursor x
+            memory.SetByte(segment, offset + 0x0Cu + i * 2u, (byte)cursorPos.Y); // text cursor y
+        }
+
+        memory.SetUInt16(segment, offset + 0x1Bu, 0); // cursor type
+        memory.SetByte(segment, offset + 0x1Du, (byte)_vgaCard.CurrentMode.ActiveDisplayPage); // active display page
+        memory.SetUInt16(segment, offset + 0x1Eu, bios.CrtControllerBaseAddress); // CRTC base address
+        memory.SetByte(segment, offset + 0x20u, 0); // current value of port 3x8h
+        memory.SetByte(segment, offset + 0x21u, 0); // current value of port 3x9h
+        memory.SetByte(segment, offset + 0x22u, bios.ScreenRows); // screen rows
+        memory.SetUInt16(segment, offset + 0x23u, (ushort)_vgaCard.CurrentMode.FontHeight); // bytes per character
+        memory.SetByte(segment, offset + 0x25u, (byte)bios.VideoMode); // active display combination code
+        memory.SetByte(segment, offset + 0x26u, (byte)bios.VideoMode); // alternate display combination code
+        memory.SetUInt16(segment, offset + 0x27u, (ushort)(_vgaCard.CurrentMode.BitsPerPixel * 8)); // number of colors supported in current mode
+        memory.SetByte(segment, offset + 0x29u, 4); // number of pages
+        memory.SetByte(segment, offset + 0x2Au, 0); // number of active scanlines
+
+        // Indicate success.
+        _state.AL = 0x1B;
+    }
+
+    /// <summary>
+    /// Reads DAC color registers to emulated RAM.
+    /// </summary>
+    private void ReadDacRegisters() {
+        ushort segment = _state.ES;
+        uint offset = (ushort)_state.DX;
+        int start = _state.BX;
+        int count = _state.CX;
+
+        for (int i = start; i < count; i++) {
+            uint r = (_vgaCard.VgaDac.Palette[start + i] >> 18) & 0xCFu;
+            uint g = (_vgaCard.VgaDac.Palette[start + i] >> 10) & 0xCFu;
+            uint b = (_vgaCard.VgaDac.Palette[start + i] >> 2) & 0xCFu;
+
+            _memory.SetByte(segment, offset, (byte)r);
+            _memory.SetByte(segment, offset + 1u, (byte)g);
+            _memory.SetByte(segment, offset + 2u, (byte)b);
+
+            offset += 3u;
+        }
+    }
+
+    /// <summary>
+    /// Sets all of the EGA color palette registers to values in emulated RAM.
+    /// </summary>
+    private void SetAllEgaPaletteRegisters() {
+        ushort segment = _state.ES;
+        uint offset = _state.DX;
+
+        for (uint i = 0; i < 16u; i++) {
+            SetEgaPaletteRegister((int)i,  _memory.GetByte(segment, offset + i));
+        }
+    }
+
+
+    /// <summary>
+    /// Sets DAC color registers to values in emulated RAM.
+    /// TODO: That's on VgaFunctions.0x12 too ?! (same as GiveVideoSubsystemConfigurationInCpuState)
+    /// </summary>
+    private void SetDacRegisters() {
+        ushort segment = _state.ES;
+        uint offset = (ushort)_state.DX;
+        int start = _state.BX;
+        int count = _state.CX;
+
+        for (int i = start; i < count; i++) {
+            byte r = _memory.GetByte(segment, offset);
+            byte g = _memory.GetByte(segment, offset + 1u);
+            byte b = _memory.GetByte(segment, offset + 2u);
+
+            _vgaCard.VgaDac.SetColor((byte)(start + i), r, g, b);
+
+            offset += 3u;
+        }
+    }
+
+    /// <summary>
+    /// Gets a specific EGA color palette register.
+    /// </summary>
+    /// <param name="index">Index of color to set.</param>
+    /// <param name="color">New value of the color.</param>
+    private void SetEgaPaletteRegister(int index, byte color) {
+        if (_memory.Bios.VideoMode == VideoMode10h.ColorGraphics320x200x4) {
+            _vgaCard.AttributeController.InternalPalette[index & 0x0F] = (byte)(color & 0x0F);
+        } else {
+            _vgaCard.AttributeController.InternalPalette[index & 0x0F] = color;
+        }
+    }
+
 
     public override byte Index => 0x10;
 
@@ -83,8 +224,8 @@ public class VideoBiosInt10Handler : InterruptHandler {
         if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Debug)) {
             _logger.Debug("GET VIDEO STATUS");
         }
-        _state.AH = _numberOfScreenColumns;
-        _state.AL = VideoModeValue;
+        _state.AH = _memory.Bios.ScreenColumns;
+        _state.AL = (byte)_memory.Bios.VideoMode;
         _state.BH = _currentDisplayPage;
     }
 
@@ -100,9 +241,12 @@ public class VideoBiosInt10Handler : InterruptHandler {
 
     public void ScrollPageUp() {
         byte scrollAmount = _state.AL;
+        byte foreground = (byte)((_state.BX >> 8) & 0x0F);
+        byte background = (byte)((_state.BX >> 12) & 0x0F);
         if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
             _logger.Information("SCROLL PAGE UP BY AMOUNT {@ScrollAmount}", ConvertUtils.ToHex8(scrollAmount));
         }
+        _vgaCard.TextConsole.ScrollTextUp(_state.CL, _state.CH, _state.DL, _state.DH, _state.AL, foreground, background);
     }
 
     public void SetBlockOfDacColorRegisters() {
@@ -157,6 +301,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
             _ => 80
         };
         _vgaCard.SetVideoModeValue(mode);
+        _machine.OnVideoModeChanged(EventArgs.Empty);
     }
 
     public void WriteTextInTeletypeMode() {
@@ -169,16 +314,20 @@ public class VideoBiosInt10Handler : InterruptHandler {
 
     private void FillDispatchTable() {
         //TODO: Replace and extend values by Functions enums (VgaFunctions, EgaFunctions...) from VideoController.HandleInterrupt
-        _dispatchTable.Add(0x00, new Callback(0x00, SetVideoMode));
-        _dispatchTable.Add(0x01, new Callback(0x01, SetCursorType));
-        _dispatchTable.Add(0x02, new Callback(0x02, SetCursorPosition));
-        _dispatchTable.Add(0x06, new Callback(0x06, ScrollPageUp));
-        _dispatchTable.Add(0x0B, new Callback(0x0B, SetColorPalette));
-        _dispatchTable.Add(0x0E, new Callback(0x0E, WriteTextInTeletypeMode));
-        _dispatchTable.Add(0x0F, new Callback(0x0F, GetVideoStatus));
-        _dispatchTable.Add(0x10, new Callback(0x10, GetSetPaletteRegisters));
-        _dispatchTable.Add(0x12, new Callback(0x12, GiveVideoSubsystemConfigurationInCpuState));
-        _dispatchTable.Add(0x1A, new Callback(0x1A, VideoDisplayCombination));
+        _dispatchTable.Add(VgaFunctions.SetDisplayMode, new Callback(VgaFunctions.SetDisplayMode, SetVideoMode));
+        _dispatchTable.Add(VgaFunctions.SetCursorShape, new Callback(VgaFunctions.SetCursorShape, SetCursorType));
+        _dispatchTable.Add(VgaFunctions.SetCursorPosition, new Callback(VgaFunctions.SetCursorPosition, SetCursorPosition));
+        _dispatchTable.Add(VgaFunctions.ScrollUpWindow, new Callback(VgaFunctions.ScrollUpWindow, ScrollPageUp));
+        _dispatchTable.Add(VgaFunctions.Video, new Callback(VgaFunctions.Video, SetColorPalette));
+        _dispatchTable.Add(VgaFunctions.TeletypeOutput, new Callback(VgaFunctions.TeletypeOutput, WriteTextInTeletypeMode));
+        _dispatchTable.Add(VgaFunctions.GetDisplayMode, new Callback(VgaFunctions.GetDisplayMode, GetVideoStatus));
+        _dispatchTable.Add(VgaFunctions.Palette_SetSingleDacRegister, new Callback(VgaFunctions.Palette_SetSingleDacRegister, GetSetPaletteRegisters));
+        _dispatchTable.Add(VgaFunctions.Palette_SetDacRegisters, new Callback(VgaFunctions.Palette_SetDacRegisters, GiveVideoSubsystemConfigurationInCpuState));
+        _dispatchTable.Add(VgaFunctions.Palette_ReadDacRegisters, new Callback(VgaFunctions.Palette_ReadDacRegisters, ReadDacRegisters));
+        _dispatchTable.Add(VgaFunctions.GetDisplayCombinationCode, new Callback(VgaFunctions.GetDisplayCombinationCode, VideoDisplayCombination));
+        // TODO: Fix this, this throws an exception because the key is the same as an existing entry...
+        //_dispatchTable.Add(VgaFunctions.Palette_SetAllRegisters, new Callback(VgaFunctions.Palette_SetAllRegisters, SetAllEgaPaletteRegisters));
+        _dispatchTable.Add(VgaFunctions.GetFunctionalityInfo, new Callback(VgaFunctions.GetFunctionalityInfo, GetFunctionalityInfo));
     }
 
     private void VideoDisplayCombination() {
@@ -195,7 +344,8 @@ public class VideoBiosInt10Handler : InterruptHandler {
                 if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
                     _logger.Information("SET VIDEO DISPLAY COMBINATION");
                 }
-                throw new UnhandledOperationException(_machine, "Unimplemented");
+                _vgaCard.SetVideoModeValue(_state.AL);
+                break;
             default:
                 throw new UnhandledOperationException(_machine,
                     $"Unhandled operation for videoDisplayCombination op={ConvertUtils.ToHex8(op)}");

@@ -45,16 +45,15 @@ public class VgaCard : DefaultIOPortHandler {
 
     private AttributeControllerRegister attributeRegister;
     private CrtControllerRegister crtRegister;
-    private bool defaultPaletteLoading = true;
     private GraphicsRegister graphicsRegister;
     private SequencerRegister sequencerRegister;
-    private int verticalTextResolution = 16;
     private static readonly long HorizontalBlankingTime = HorizontalPeriod / 2;
     private static readonly long HorizontalPeriod = (long)((1000.0 / 60.0) / 480.0 * Pic.StopwatchTicksPerMillisecond);
     private static readonly long RefreshRate = (long)((1000.0 / 60.0) * Pic.StopwatchTicksPerMillisecond);
     private static readonly long VerticalBlankingTime = RefreshRate / 40;
     private bool attributeDataMode;
-
+    private bool defaultPaletteLoading = true;
+    private int verticalTextResolution = 16;
 
     /// <summary>
     /// Gets the VGA attribute controller.
@@ -213,155 +212,6 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     /// <summary>
-    /// Gets information about BIOS fonts.
-    /// </summary>
-    private void GetFontInfo() {
-        if (CurrentMode is null) {
-            return;
-        }
-        SegmentedAddress address = this._machine.Cpu.State.BH switch {
-            0x00 => this._machine.Memory.GetRealModeInterruptAddress(0x1F),
-            0x01 => this._machine.Memory.GetRealModeInterruptAddress(0x43),
-            0x02 or 0x05 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x14Offset),
-            0x03 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset),
-            0x04 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset + 128 * 8),
-            _ => new SegmentedAddress(Memory.FontSegment, Memory.Font8x16Offset),
-        };
-
-        this._machine.Cpu.State.ES = address.Segment;
-        this._machine.Cpu.State.BP = address.Offset;
-        this._machine.Cpu.State.CX = (ushort)this.CurrentMode.FontHeight;
-        this._machine.Cpu.State.DL = this._machine.Memory.Bios.ScreenRows;
-    }
-
-    /// <summary>
-    /// Writes a table of information about the current video mode.
-    /// </summary>
-    private void GetFunctionalityInfo() {
-        if (CurrentMode is null) {
-            return;
-        }
-        ushort segment = _machine.Cpu.State.ES;
-        ushort offset = _machine.Cpu.State.DI;
-
-        Memory memory = _machine.Memory;
-        Bios bios = memory.Bios;
-
-        Point cursorPos = TextConsole.CursorPosition;
-
-        memory.SetUInt32(segment, offset, StaticFunctionalityTableSegment << 16); // SFT address
-        memory.SetByte(segment, offset + 0x04u, (byte)bios.VideoMode); // video mode
-        memory.SetUInt16(segment, offset + 0x05u, bios.ScreenColumns); // columns
-        memory.SetUInt32(segment, offset + 0x07u, 0); // regen buffer
-        for (uint i = 0; i < 8; i++) {
-            memory.SetByte(segment, offset + 0x0Bu + i * 2u, (byte)cursorPos.X); // text cursor x
-            memory.SetByte(segment, offset + 0x0Cu + i * 2u, (byte)cursorPos.Y); // text cursor y
-        }
-
-        memory.SetUInt16(segment, offset + 0x1Bu, 0); // cursor type
-        memory.SetByte(segment, offset + 0x1Du, (byte)this.CurrentMode.ActiveDisplayPage); // active display page
-        memory.SetUInt16(segment, offset + 0x1Eu, bios.CrtControllerBaseAddress); // CRTC base address
-        memory.SetByte(segment, offset + 0x20u, 0); // current value of port 3x8h
-        memory.SetByte(segment, offset + 0x21u, 0); // current value of port 3x9h
-        memory.SetByte(segment, offset + 0x22u, bios.ScreenRows); // screen rows
-        memory.SetUInt16(segment, offset + 0x23u, (ushort)this.CurrentMode.FontHeight); // bytes per character
-        memory.SetByte(segment, offset + 0x25u, (byte)bios.VideoMode); // active display combination code
-        memory.SetByte(segment, offset + 0x26u, (byte)bios.VideoMode); // alternate display combination code
-        memory.SetUInt16(segment, offset + 0x27u, (ushort)(this.CurrentMode.BitsPerPixel * 8)); // number of colors supported in current mode
-        memory.SetByte(segment, offset + 0x29u, 4); // number of pages
-        memory.SetByte(segment, offset + 0x2Au, 0); // number of active scanlines
-
-        // Indicate success.
-        _machine.Cpu.State.AL = 0x1B;
-    }
-
-    /// <summary>
-    /// Writes values to the static functionality table in emulated memory.
-    /// </summary>
-    private void InitializeStaticFunctionalityTable() {
-        Memory memory = _machine.Memory;
-        memory.SetUInt32(StaticFunctionalityTableSegment, 0, 0x000FFFFF); // supports all video modes
-        memory.SetByte(StaticFunctionalityTableSegment, 0x07, 0x07); // supports all scanlines
-    }
-
-    /// <summary>
-    /// Reads DAC color registers to emulated RAM.
-    /// </summary>
-    private void ReadDacRegisters() {
-        ushort segment = _machine.Cpu.State.ES;
-        uint offset = (ushort)_machine.Cpu.State.DX;
-        int start = _machine.Cpu.State.BX;
-        int count = _machine.Cpu.State.CX;
-
-        for (int i = start; i < count; i++) {
-            uint r = (VgaDac.Palette[start + i] >> 18) & 0xCFu;
-            uint g = (VgaDac.Palette[start + i] >> 10) & 0xCFu;
-            uint b = (VgaDac.Palette[start + i] >> 2) & 0xCFu;
-
-            _machine.Memory.SetByte(segment, offset, (byte)r);
-            _machine.Memory.SetByte(segment, offset + 1u, (byte)g);
-            _machine.Memory.SetByte(segment, offset + 2u, (byte)b);
-
-            offset += 3u;
-        }
-    }
-
-    /// <summary>
-    /// Sets all of the EGA color palette registers to values in emulated RAM.
-    /// </summary>
-    private void SetAllEgaPaletteRegisters() {
-        ushort segment = _machine.Cpu.State.ES;
-        uint offset = (ushort)_machine.Cpu.State.DX;
-
-        for (uint i = 0; i < 16u; i++) {
-            SetEgaPaletteRegister((int)i, _machine.Memory.GetByte(segment, offset + i));
-        }
-    }
-
-    /// <summary>
-    /// Changes the appearance of the text-mode cursor.
-    /// </summary>
-    /// <param name="topOptions">Top scan line and options.</param>
-    /// <param name="bottom">Bottom scan line.</param>
-    private void SetCursorShape(int topOptions, int bottom) {
-        int mode = (topOptions >> 4) & 3;
-        _machine.IsCursorVisible = mode != 2;
-    }
-
-    /// <summary>
-    /// Sets DAC color registers to values in emulated RAM.
-    /// </summary>
-    private void SetDacRegisters() {
-        ushort segment = _machine.Cpu.State.ES;
-        uint offset = (ushort)_machine.Cpu.State.DX;
-        int start = _machine.Cpu.State.BX;
-        int count = _machine.Cpu.State.CX;
-
-        for (int i = start; i < count; i++) {
-            byte r = _machine.Memory.GetByte(segment, offset);
-            byte g = _machine.Memory.GetByte(segment, offset + 1u);
-            byte b = _machine.Memory.GetByte(segment, offset + 2u);
-
-            _machine.VgaCard.VgaDac.SetColor((byte)(start + i), r, g, b);
-
-            offset += 3u;
-        }
-    }
-
-    /// <summary>
-    /// Gets a specific EGA color palette register.
-    /// </summary>
-    /// <param name="index">Index of color to set.</param>
-    /// <param name="color">New value of the color.</param>
-    private void SetEgaPaletteRegister(int index, byte color) {
-        if (_machine.Memory.Bios.VideoMode == VideoMode10h.ColorGraphics320x200x4) {
-            AttributeController.InternalPalette[index & 0x0F] = (byte)(color & 0x0F);
-        } else {
-            AttributeController.InternalPalette[index & 0x0F] = color;
-        }
-    }
-
-    /// <summary>
     /// Sets the current mode to text mode 80x50.
     /// </summary>
     private void SwitchTo80x50TextMode() {
@@ -467,7 +317,7 @@ public class VgaCard : DefaultIOPortHandler {
                 break;
 
             case VideoPorts.SequencerData:
-                var previousMode = Sequencer.SequencerMemoryMode;
+                SequencerMemoryMode previousMode = Sequencer.SequencerMemoryMode;
                 Sequencer.WriteRegister(sequencerRegister, value);
                 if ((previousMode & SequencerMemoryMode.Chain4) == SequencerMemoryMode.Chain4 && (Sequencer.SequencerMemoryMode & SequencerMemoryMode.Chain4) == 0)
                     EnterModeX();
@@ -571,20 +421,12 @@ public class VgaCard : DefaultIOPortHandler {
                 _gui?.SetResolution(40, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
             case VideoMode10h.Text80x25x1:
-                _gui?.SetResolution(80, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-                break;
             case VideoMode10h.MonochromeText80x25x4:
-                _gui?.SetResolution(80, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-                break;
             case VideoMode10h.ColorText80x25x4:
                 _gui?.SetResolution(80, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
             case VideoMode10h.ColorGraphics320x200x2A:
-                _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-                break;
             case VideoMode10h.ColorGraphics320x200x2B:
-                _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-                break;
             case VideoMode10h.ColorGraphics320x200x4:
                 _gui?.SetResolution(320, 200, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
@@ -607,8 +449,6 @@ public class VgaCard : DefaultIOPortHandler {
                 _gui?.SetResolution(640, 350, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
             case VideoMode10h.Graphics640x480x1:
-                _gui?.SetResolution(640, 480, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
-                break;
             case VideoMode10h.Graphics640x480x4:
                 _gui?.SetResolution(640, 480, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
@@ -623,6 +463,6 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     public void UpdateScreen() {
-        _gui?.Draw(_memory.Ram, VgaDac.Palette, CurrentVideoMode);
+        _gui?.Draw();
     }
 }
