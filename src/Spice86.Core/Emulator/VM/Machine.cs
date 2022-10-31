@@ -221,6 +221,7 @@ public class Machine : IDisposable {
             Name = "DMAThread"
         };
         EndInitialization();
+        VgaCard.SwitchTo80x50TextMode();
     }
 
     public VideoMode? VideoMode { get; internal set; }

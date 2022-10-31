@@ -214,7 +214,7 @@ public class VgaCard : DefaultIOPortHandler {
     /// <summary>
     /// Sets the current videoMode to text videoMode 80x50.
     /// </summary>
-    private void SwitchTo80x50TextMode() {
+    public void SwitchTo80x50TextMode() {
         var mode = new TextMode(80, 50, 8, this._machine.VgaCard);
         this.CurrentMode = mode;
         _machine.OnVideoModeChanged(EventArgs.Empty);
