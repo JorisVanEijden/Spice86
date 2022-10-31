@@ -128,9 +128,7 @@ public class Memory {
         return res;
     }
 
-    private byte[] _ram = Array.Empty<byte>();
-
-    public byte[] Ram { get => _ram; private set { _ram = value; } }
+    public byte[] Ram { get; private set; } = Array.Empty<byte>();
 
     public int Size => Ram.Length;
 
