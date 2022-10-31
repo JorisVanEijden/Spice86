@@ -18,11 +18,8 @@ internal sealed class MetaAllocator
     /// </summary>
     public void Clear()
     {
-        lock (this.allocations)
-        {
-            this.allocations.Clear();
-            this.allocations.AddLast(new Allocation(0, Memory.ConvMemorySize >> 4, false));
-        }
+        this.allocations.Clear();
+        this.allocations.AddLast(new Allocation(0, Memory.ConvMemorySize >> 4, false));
     }
     /// <summary>
     /// Reserves a new block of memory.
@@ -41,44 +38,41 @@ internal sealed class MetaAllocator
             paragraphs++;
         }
 
-        lock (this.allocations)
+        Allocation freeBlock;
+        try
         {
-            Allocation freeBlock;
-            try
-            {
-                freeBlock = this.allocations.Where(a => !a.IsUsed && InRange(a, minimumSegment, paragraphs)).First();
-            }
-            catch (InvalidOperationException ex)
-            {
-                throw new InvalidOperationException("Not enough conventional memory.", ex);
-            }
-
-            if (freeBlock.Length == paragraphs)
-            {
-                freeBlock.IsUsed = true;
-                return freeBlock.Segment;
-            }
-
-            ushort providedSegment = Math.Max(minimumSegment, freeBlock.Segment);
-
-            var newFreeBlockA = new Allocation(freeBlock.Segment, (uint)providedSegment - (uint)freeBlock.Segment, false);
-            var newUsedBlock = new Allocation(providedSegment, paragraphs, true);
-            var newFreeBlockB = new Allocation((ushort)(providedSegment + paragraphs), freeBlock.Length - newFreeBlockA.Length - paragraphs, false);
-
-            var newBlocks = new List<Allocation>(3);
-            if (newFreeBlockA.Length > 0) {
-                newBlocks.Add(newFreeBlockA);
-            }
-
-            newBlocks.Add(newUsedBlock);
-            if (newFreeBlockB.Length > 0) {
-                newBlocks.Add(newFreeBlockB);
-            }
-
-            this.allocations.Replace(freeBlock, newBlocks.ToArray());
-
-            return newUsedBlock.Segment;
+            freeBlock = this.allocations.Where(a => !a.IsUsed && InRange(a, minimumSegment, paragraphs)).First();
         }
+        catch (InvalidOperationException ex)
+        {
+            throw new InvalidOperationException("Not enough conventional memory.", ex);
+        }
+
+        if (freeBlock.Length == paragraphs)
+        {
+            freeBlock.IsUsed = true;
+            return freeBlock.Segment;
+        }
+
+        ushort providedSegment = Math.Max(minimumSegment, freeBlock.Segment);
+
+        var newFreeBlockA = new Allocation(freeBlock.Segment, (uint)providedSegment - (uint)freeBlock.Segment, false);
+        var newUsedBlock = new Allocation(providedSegment, paragraphs, true);
+        var newFreeBlockB = new Allocation((ushort)(providedSegment + paragraphs), freeBlock.Length - newFreeBlockA.Length - paragraphs, false);
+
+        var newBlocks = new List<Allocation>(3);
+        if (newFreeBlockA.Length > 0) {
+            newBlocks.Add(newFreeBlockA);
+        }
+
+        newBlocks.Add(newUsedBlock);
+        if (newFreeBlockB.Length > 0) {
+            newBlocks.Add(newFreeBlockB);
+        }
+
+        this.allocations.Replace(freeBlock, newBlocks.ToArray());
+
+        return newUsedBlock.Segment;
     }
     /// <summary>
     /// Returns the size of the largest free block of memory.
@@ -86,10 +80,7 @@ internal sealed class MetaAllocator
     /// <returns>Size in bytes of the largest free block of memory.</returns>
     public uint GetLargestFreeBlockSize()
     {
-        lock (this.allocations)
-        {
-            return this.allocations.Where(a => !a.IsUsed).Max(a => a.Length) << 4;
-        }
+        return this.allocations.Where(a => !a.IsUsed).Max(a => a.Length) << 4;
     }
 
     /// <summary>

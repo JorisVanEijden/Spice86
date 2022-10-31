@@ -10,8 +10,7 @@ public abstract class Presenter : IDisposable
 {
     private Scaler? scaler;
     private MemoryBitmap? internalBuffer;
-    private readonly object syncLock = new();
-    private bool disposed;
+    private bool _disposed;
     private readonly Func<uint, uint>? _colorConverterFunc;
 
     /// <summary>
@@ -102,17 +101,14 @@ public abstract class Presenter : IDisposable
     /// </summary>
     public void Update(IntPtr destination)
     {
-        lock (this.syncLock)
+        if (this.scaler == null)
         {
-            if (this.scaler == null)
-            {
-                this.DrawFrame(destination);
-            }
-            else
-            {
-                this.DrawFrame(this.internalBuffer!.PixelBuffer);
-                this.scaler.Apply(this.internalBuffer.PixelBuffer, destination);
-            }
+            this.DrawFrame(destination);
+        }
+        else
+        {
+            this.DrawFrame(this.internalBuffer!.PixelBuffer);
+            this.scaler.Apply(this.internalBuffer.PixelBuffer, destination);
         }
     }
 
@@ -123,16 +119,18 @@ public abstract class Presenter : IDisposable
     /// </summary>
     protected abstract void DrawFrame(IntPtr destination);
 
-    public void Dispose()
-    {
-        lock (this.syncLock)
-        {
-            if (!this.disposed)
-            {
+    public void Dispose() {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing) {
+        if(disposing) {
+            if(!_disposed) {
                 this.internalBuffer?.Dispose();
-                this.disposed = true;
-                GC.SuppressFinalize(this);
             }
+            _disposed = true;
         }
     }
 }
