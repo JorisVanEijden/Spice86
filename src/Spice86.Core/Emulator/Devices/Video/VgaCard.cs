@@ -180,7 +180,6 @@ public class VgaCard : DefaultIOPortHandler {
     /// <param name="value">Value to write.</param>
     public void SetVramDWord(uint offset, uint value) => this.CurrentMode?.SetVramDWord(offset, value);
 
-
     /// <summary>
     /// Changes the current video videoMode to match the new value of the vertical end register.
     /// </summary>
@@ -359,6 +358,16 @@ public class VgaCard : DefaultIOPortHandler {
         ioPortDispatcher.AddIOPortHandler(VideoPorts.DacData, this);
         ioPortDispatcher.AddIOPortHandler(VideoPorts.GraphicsControllerAddress, this);
         ioPortDispatcher.AddIOPortHandler(VideoPorts.InputStatus1ReadAlt, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.CrtControllerDataAlt, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.CrtControllerData, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.CrtControllerAddress, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.CrtControllerAddressAlt, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.AttributeData, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.AttributeAddress, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.GraphicsControllerData, this);
+        ioPortDispatcher.AddIOPortHandler(VideoPorts.InputStatus1Read, this);
+        // TODO: This provokes an Exception, since the key is the same as an existing entry.
+        //ioPortDispatcher.AddIOPortHandler(VideoPorts.DacAddressReadMode, this);
     }
 
     public byte RgbDataRead() {

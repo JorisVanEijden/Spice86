@@ -218,7 +218,7 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
         if (videoMode.VideoModeType == VideoModeType.Text) {
             return new TextPresenter(videoMode, ToNativePixelFormat);
         } else {
-            return videoMode.BitsPerPixel switch {
+            Presenter? presenter = videoMode.BitsPerPixel switch {
                 2 => new GraphicsPresenter2(videoMode, ToNativePixelFormat),
                 4 => new GraphicsPresenter4(videoMode, ToNativePixelFormat),
                 8 when videoMode.IsPlanar => new GraphicsPresenterX(videoMode, ToNativePixelFormat),
@@ -226,6 +226,12 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
                 16 => new GraphicsPresenter16(videoMode, ToNativePixelFormat),
                 _ => null
             };
+            // Ensure that we only present what is in within our limits (ie. for Gdb AddBuffer command)
+            if(presenter is not null) {
+                presenter.TargetHeight = this.Height;
+                presenter.TargetWidth = this.Width;
+            }
+            return presenter;
         }
     }
 
