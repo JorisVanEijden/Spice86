@@ -25,6 +25,7 @@ using System.Threading.Tasks;
 
 // TODO: Make all video modes work with Gdb video buffer start offset relative to the current video mode
 // TODO: Remove all pointers and pointers arithmetic everywhere, except for the ILockedFramebuffer stuff in this file.
+// TODO: Verify that ToNativePixelFormat is needed and works
 /// <inheritdoc />
 public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBufferViewModel, IComparable<VideoBufferViewModel>, IDisposable {
     private bool _disposedValue;
@@ -178,7 +179,7 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
     private Action? _drawAction;
 
     public unsafe void Draw() {
-        if (_machine is null || _bitmap is null || _machine?.VgaCard.CurrentMode is null || _appClosing || _disposedValue || UIUpdateMethod is null) {
+        if (_machine is null || _machine?.VgaCard.CurrentMode is null || _appClosing || _disposedValue || UIUpdateMethod is null) {
             return;
         }
         StartDrawThreadIfNeeded();
@@ -187,20 +188,20 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
             if(_presenter is null) {
                 return;
             }
-            EnsureRenderTarget(_presenter);
-            using ILockedFramebuffer buf = _bitmap.Lock();
+            Bitmap = EnsureRenderTarget(_presenter);
+            using ILockedFramebuffer buf = Bitmap.Lock();
             _presenter.Update(buf.Address);
             UpdateGui();
         });
         WaitForNextCall();
     }
 
-    private void EnsureRenderTarget(Presenter presenter) {
-        if (this._bitmap != null && presenter.TargetWidth == this._bitmap.PixelSize.Width && presenter.TargetHeight == this._bitmap.PixelSize.Height) {
-            return;
+    private WriteableBitmap EnsureRenderTarget(Presenter presenter) {
+        if (Bitmap is not null && presenter.TargetWidth == Bitmap.PixelSize.Width && presenter.TargetHeight == Bitmap.PixelSize.Height) {
+            return Bitmap;
         }
-        this._bitmap?.Dispose();
-        this._bitmap = new
+        Bitmap?.Dispose();
+        return new
             (new(presenter.TargetWidth,
             presenter.TargetHeight),
             new(96, 96),

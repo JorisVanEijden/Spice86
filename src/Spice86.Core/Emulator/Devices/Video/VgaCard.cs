@@ -3,6 +3,7 @@
 using Serilog;
 
 using Spice86.Core.Emulator;
+using Spice86.Core.Emulator.CPU;
 using Spice86.Core.Emulator.Devices.ExternalInput;
 using Spice86.Core.Emulator.Errors;
 using Spice86.Core.Emulator.IOPorts;
@@ -20,7 +21,7 @@ using Spice86.Core.Emulator.Video;
 using Spice86.Core.DI;
 
 /// <summary>
-/// Implementation of VGA card, currently only supports mode 0x13.<br/>
+/// Implementation of VGA card, currently only supports videoMode 0x13.<br/>
 /// TODO: Make all VideoModes call SetResolution through this, and make them work with Gdb
 /// TODO: Every time a VideoMode change occurs, ensure this class is called properly.
 /// TODO: Ensure that unused code (such as SwitchTo80x50TextMode) is used.
@@ -76,7 +77,7 @@ public class VgaCard : DefaultIOPortHandler {
     public Sequencer Sequencer { get; } = new Sequencer();
 
     /// <summary>
-    /// Gets the text-mode display instance.
+    /// Gets the text-videoMode display instance.
     /// </summary>
     public TextConsole TextConsole { get; }
 
@@ -137,7 +138,7 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     /// <summary>
-    /// Gets the current display mode.
+    /// Gets the current display videoMode.
     /// </summary>
     public VideoMode? CurrentMode { get; private set; }
 
@@ -181,7 +182,7 @@ public class VgaCard : DefaultIOPortHandler {
 
 
     /// <summary>
-    /// Changes the current video mode to match the new value of the vertical end register.
+    /// Changes the current video videoMode to match the new value of the vertical end register.
     /// </summary>
     private void ChangeVerticalEnd() {
         // this is a hack
@@ -202,7 +203,7 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     /// <summary>
-    /// Sets the current mode to unchained mode 13h.
+    /// Sets the current videoMode to unchained videoMode 13h.
     /// </summary>
     private void EnterModeX() {
         var mode = new Unchained256(320, 200, this);
@@ -212,7 +213,7 @@ public class VgaCard : DefaultIOPortHandler {
     }
 
     /// <summary>
-    /// Sets the current mode to text mode 80x50.
+    /// Sets the current videoMode to text videoMode 80x50.
     /// </summary>
     private void SwitchTo80x50TextMode() {
         var mode = new TextMode(80, 50, 8, this._machine.VgaCard);
@@ -406,16 +407,14 @@ public class VgaCard : DefaultIOPortHandler {
         VgaDac.State = VgaDac.VgaDacWrite;
     }
 
-    public VideoMode10h CurrentVideoMode { get; private set; }
-
-    public void SetVideoModeValue(byte mode) {
-        if(!Enum.GetValues<VideoMode10h>().Select(static x => (byte)x).Contains(mode)) {
+    public void SetVideoModeValue(byte videoMode) {
+        if(!Enum.GetValues<VideoMode10h>().Select(static x => (byte)x).Contains(videoMode)) {
             if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Error)) {
-                _logger.Error("UNSUPPORTED VIDEO MODE {@VideMode}", mode);
+                _logger.Error("UNSUPPORTED VIDEO MODE {@VideMode}", videoMode);
             }
         }
-        CurrentVideoMode = (VideoMode10h)mode;
-        switch (CurrentVideoMode)
+
+        switch ((VideoMode10h)videoMode)
         {
             case VideoMode10h.Text40x25x1:
                 _gui?.SetResolution(40, 25, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
@@ -453,8 +452,71 @@ public class VgaCard : DefaultIOPortHandler {
                 _gui?.SetResolution(640, 480, MemoryUtils.ToPhysicalAddress(MemoryMap.GraphicVideoMemorySegment, 0));
                 break;
             default:
-                throw new UnrecoverableException($"Unimplemented video mode {CurrentVideoMode}");
+                throw new UnrecoverableException($"Unimplemented video mode {videoMode}");
         }
+        _machine.Memory.Bios.VideoMode = (VideoMode10h)videoMode;
+
+        VideoMode? mode = null;
+
+        switch ((VideoMode10h)videoMode) {
+            case VideoMode10h.ColorText40x25x4:
+                mode = new TextMode(40, 25, 8, this);
+                break;
+
+            case VideoMode10h.ColorText80x25x4:
+            case VideoMode10h.MonochromeText80x25x4:
+                mode = new TextMode(80, 25, this.verticalTextResolution, this);
+                break;
+
+            case VideoMode10h.ColorGraphics320x200x2A:
+            case VideoMode10h.ColorGraphics320x200x2B:
+                mode = new CgaMode4(this);
+                break;
+
+            case VideoMode10h.ColorGraphics320x200x4:
+                mode = new EgaVga16(320, 200, 8, this);
+                break;
+
+            case VideoMode10h.ColorGraphics640x200x4:
+                mode = new EgaVga16(640, 400, 8, this);
+                break;
+
+            case VideoMode10h.ColorGraphics640x350x4:
+                mode = new EgaVga16(640, 350, 8, this);
+                break;
+
+            case VideoMode10h.Graphics640x480x4:
+                mode = new EgaVga16(640, 480, 16, this);
+                break;
+
+            case VideoMode10h.Graphics320x200x8:
+                this.Sequencer.SequencerMemoryMode = SequencerMemoryMode.Chain4;
+                mode = new Vga256(320, 200, this);
+                break;
+
+            default:
+                break;
+        }
+        if(mode is not null) {
+            SetDisplayMode(mode);
+
+        }
+    }
+
+    /// <summary>
+    /// Initializes a new display videoMode.
+    /// </summary>
+    /// <param name="mode">New display videoMode.</param>
+    public void SetDisplayMode(VideoMode mode) {
+        this.CurrentMode = mode;
+        mode.InitializeMode(this);
+        Graphics.WriteRegister(GraphicsRegister.ColorDontCare, 0x0F);
+
+        if (this.defaultPaletteLoading) {
+            VgaDac.Reset();
+        }
+
+        _machine.OnVideoModeChanged(EventArgs.Empty);
     }
 
     public void TickRetrace() {
