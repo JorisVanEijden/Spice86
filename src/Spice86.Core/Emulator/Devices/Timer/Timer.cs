@@ -127,10 +127,6 @@ public class Timer : DefaultIOPortHandler {
         if (_counters[0].ProcessActivation(cycles)) {
             _dualPic.ProcessInterruptRequest(0);
         }
-
-        if (_vgaRetraceCounter.ProcessActivation(cycles)) {
-            _vgaCard.TickRetrace();
-        }
         if (_vgaScreenRefreshCounter.ProcessActivation(cycles)) {
             _vgaCard.UpdateScreen();
         }

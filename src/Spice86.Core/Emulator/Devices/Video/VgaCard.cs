@@ -30,20 +30,7 @@ using Spice86.Core.DI;
 public class VgaCard : DefaultIOPortHandler, IDisposable {
     private readonly ILogger _logger;
 
-    // Means the CRT is busy drawing a line, tells the program it should not draw
-    private const byte StatusRegisterRetraceInactive = 0;
-    // 4th bit is 1 when the CRT finished drawing and is returning to the beginning
-    // of the screen (retrace).
-    // Programs use this to know if it is safe to write to VRAM.
-    // They write to VRAM when this bit is set, but only after waiting for a 0
-    // first.
-    // This is to be sure to catch the start of the retrace to ensure having the
-    // whole duration of the retrace to write to VRAM.
-    // More info here: http://atrevida.comprenica.com/atrtut10.html
-    private const byte StatusRegisterRetraceActive = 0b1000;
-
     private readonly IGui? _gui;
-    private byte _crtStatusRegister = StatusRegisterRetraceActive;
     private bool _disposed;
 
     private AttributeControllerRegister attributeRegister;
@@ -124,17 +111,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
             _memory.SetUint8(colorValuesAddress++, VgaDac.From8bitTo6bitColor(rgb.G));
             _memory.SetUint8(colorValuesAddress++, VgaDac.From8bitTo6bitColor(rgb.B));
         }
-    }
-
-    public byte GetStatusRegisterPort() {
-        if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _logger.Information("CHECKING RETRACE");
-        }
-        attributeDataMode = false;
-        byte res = _crtStatusRegister;
-        // Next time we will be called retrace will be active, and this until the retrace tick
-        _crtStatusRegister = StatusRegisterRetraceActive;
-        return res;
     }
 
     /// <summary>
@@ -306,7 +282,8 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
 
             case VideoPorts.InputStatus1Read:
             case VideoPorts.InputStatus1ReadAlt:
-                return GetStatusRegisterPort();
+                attributeDataMode = false;
+                return GetInputStatus1Value();
 
             default:
                 return 0;
@@ -558,11 +535,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
         mode.InitializeMode(this);
         Graphics.WriteRegister(GraphicsRegister.ColorDontCare, 0x0F);
         _machine.OnVideoModeChanged(EventArgs.Empty);
-    }
-
-    public void TickRetrace() {
-        // Inactive at tick time, but will become active once the code checks for it.
-        _crtStatusRegister = StatusRegisterRetraceInactive;
     }
 
     public void UpdateScreen() {
