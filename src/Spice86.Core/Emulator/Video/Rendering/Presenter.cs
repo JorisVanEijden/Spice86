@@ -29,6 +29,8 @@ public abstract class Presenter : IDisposable {
         return _colorConverterFunc(pixel);
     }
 
+    protected bool IsDisposed => _disposed;
+
     /// <summary>
     /// Gets or sets the scaler used on the output.
     /// </summary>
@@ -90,6 +92,9 @@ public abstract class Presenter : IDisposable {
     /// </summary>
     public void Update(IntPtr destination)
     {
+        if (_disposed) {
+            return;
+        }
         if (this.scaler == null)
         {
             this.DrawFrame(destination);

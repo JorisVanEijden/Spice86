@@ -29,7 +29,7 @@ public class TextConsole
     {
         unsafe
         {
-            displayData = (ushort*)video.RawView;
+            displayData = (ushort*)video.VideoRam;
         }
 
         this.video = video;

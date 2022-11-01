@@ -20,7 +20,7 @@ public abstract class Planar4 : VideoMode
     {
         unsafe
         {
-            this.videoRam = (uint*)video.RawView;
+            this.videoRam = (uint*)video.VideoRam;
         }
 
         this.graphics = video.Graphics;
@@ -29,6 +29,9 @@ public abstract class Planar4 : VideoMode
 
     internal override byte GetVramByte(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         offset %= 65536u;
 
         unsafe
@@ -52,6 +55,9 @@ public abstract class Planar4 : VideoMode
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     internal override void SetVramByte(uint offset, byte value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         offset %= 65536u;
 
         uint writeMode = this.graphics.GraphicsMode & 0x3u;
@@ -85,19 +91,31 @@ public abstract class Planar4 : VideoMode
     }
     internal override ushort GetVramWord(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         return (ushort)(this.GetVramByte(offset) | (this.GetVramByte(offset + 1u) << 8));
     }
     internal override void SetVramWord(uint offset, ushort value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         this.SetVramByte(offset, (byte)value);
         this.SetVramByte(offset + 1u, (byte)(value >> 8));
     }
     internal override uint GetVramDWord(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         return (uint)(this.GetVramByte(offset) | (this.GetVramByte(offset + 1u) << 8) | (this.GetVramByte(offset + 2u) << 16) | (this.GetVramByte(offset + 3u) << 24));
     }
     internal override void SetVramDWord(uint offset, uint value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         this.SetVramByte(offset, (byte)value);
         this.SetVramByte(offset + 1u, (byte)(value >> 8));
         this.SetVramByte(offset + 2u, (byte)(value >> 16));
@@ -105,8 +123,10 @@ public abstract class Planar4 : VideoMode
     }
     internal override void WriteCharacter(int x, int y, int index, byte foreground, byte background)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             uint fg = new MaskValue(foreground).Expanded;
             //uint bg = VideoComponent.ExpandRegister(background);
 
@@ -136,8 +156,10 @@ public abstract class Planar4 : VideoMode
     /// <param name="input">Byte to write to video RAM.</param>
     private void SetByteMode0(uint offset, byte input)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             if (graphics.DataRotate == 0)
             {
                 uint source = (uint)input * 0x01010101;
@@ -175,8 +197,10 @@ public abstract class Planar4 : VideoMode
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void SetByteMode0_Extended(uint offset, byte input)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             uint source = (uint)input * 0x01010101;
             uint mask = (uint)graphics.BitMask * 0x01010101;
 
@@ -225,8 +249,10 @@ public abstract class Planar4 : VideoMode
     /// <param name="input">Byte to write to video RAM.</param>
     private void SetByteMode2(uint offset, byte input)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             uint values = new MaskValue(input).Expanded;
 
             uint logicalOp = Intrinsics.ExtractBits(graphics.DataRotate, 3, 2, 0b11000);
@@ -267,8 +293,10 @@ public abstract class Planar4 : VideoMode
     }
     private void SetByteMode3(uint offset, byte input)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             int rotateCount = graphics.DataRotate & 0x07;
             uint source = (byte)(((uint)input >> rotateCount) | ((uint)input << (8 - rotateCount)));
             source &= graphics.BitMask;
@@ -282,8 +310,7 @@ public abstract class Planar4 : VideoMode
     }
     private static uint RotateBytes(uint value, int count)
     {
-        unsafe
-        {
+        unsafe {
             byte* v = (byte*)&value;
             int count2 = 8 - count;
             v[0] = (byte)((v[0] >> count) | (v[0] << count2));

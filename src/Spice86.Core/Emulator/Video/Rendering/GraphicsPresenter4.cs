@@ -23,6 +23,9 @@ public class GraphicsPresenter4 : Presenter
     /// </summary>
     protected override void DrawFrame(IntPtr destination)
     {
+        if (IsDisposed) {
+            return;
+        }
         int width = this.VideoMode.Width;
         int height = Math.Min(this.VideoMode.Height, this.VideoMode.LineCompare + 1);
         ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;

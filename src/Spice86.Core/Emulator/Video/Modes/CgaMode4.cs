@@ -16,7 +16,7 @@ public class CgaMode4 : VideoMode
     {
         unsafe
         {
-            this.videoRam = video.RawView;
+            this.videoRam = (byte*)video.VideoRam;
         }
     }
 
@@ -24,6 +24,9 @@ public class CgaMode4 : VideoMode
 
     internal override byte GetVramByte(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         offset -= BaseAddress;
         unsafe
         {
@@ -32,6 +35,9 @@ public class CgaMode4 : VideoMode
     }
     internal override void SetVramByte(uint offset, byte value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         offset -= BaseAddress;
         unsafe
         {
@@ -40,6 +46,9 @@ public class CgaMode4 : VideoMode
     }
     internal override ushort GetVramWord(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         offset -= BaseAddress;
         unsafe
         {
@@ -48,6 +57,9 @@ public class CgaMode4 : VideoMode
     }
     internal override void SetVramWord(uint offset, ushort value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         offset -= BaseAddress;
         unsafe
         {
@@ -56,6 +68,9 @@ public class CgaMode4 : VideoMode
     }
     internal override uint GetVramDWord(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         offset -= BaseAddress;
         unsafe
         {
@@ -64,6 +79,9 @@ public class CgaMode4 : VideoMode
     }
     internal override void SetVramDWord(uint offset, uint value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         offset -= BaseAddress;
         unsafe
         {

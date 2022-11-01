@@ -6,6 +6,7 @@ using Spice86.Core.CLI;
 using Spice86.Core.Emulator;
 using Spice86.Core.Emulator.Callback;
 using Spice86.Core.Emulator.CPU;
+using Spice86.Core.Emulator.Devices;
 using Spice86.Core.Emulator.Devices.DirectMemoryAccess;
 using Spice86.Core.Emulator.Devices.ExternalInput;
 using Spice86.Core.Emulator.Devices.Input.Joystick;
@@ -222,6 +223,18 @@ public class Machine : IDisposable {
         };
         EndInitialization();
         VgaCard.SwitchTo80x50TextMode();
+        //TODO: The only IDeviceCallbackProvider is the ExtendedMemoryManager. For now...
+        // Fix this once there is more than one.
+        ExtendedMemoryManager virtualDevice = this.xmm;
+        if (virtualDevice is IDeviceCallbackProvider callbackProvider) {
+            int id = 1;
+            callbackProvider.CallbackAddress = this.Memory.AddCallbackHandler((byte)id, callbackProvider.IsHookable);
+            Span<byte> machineCode = stackalloc byte[3];
+            machineCode[0] = 0x0F;
+            machineCode[1] = 0x56;
+            machineCode[2] = (byte)id;
+            callbackProvider.SetRaiseCallbackInstruction(machineCode);
+        }
     }
 
     public VideoMode? VideoMode { get; internal set; }
@@ -403,6 +416,7 @@ public class Machine : IDisposable {
                     _dmaThread.Join();
                 }
                 _dmaResetEvent.Dispose();
+                VideoBiosInt10Handler.Dispose();
                 Midi.Dispose();
                 SoundBlaster.Dispose();
                 OPL3FM.Dispose();

@@ -21,9 +21,8 @@ public class TextMode : VideoMode
     public TextMode(int width, int height, int fontHeight, VgaCard video)
         : base(width, height, 4, false, fontHeight, VideoModeType.Text, video)
     {
-        unsafe
-        {
-            this.videoRam = (byte*)video.RawView;
+        unsafe {
+            this.videoRam = (byte*)video.VideoRam;
             byte* vram = this.videoRam;
             this.planes = (byte**)this.planesBuffer.ToPointer();
 
@@ -53,6 +52,9 @@ public class TextMode : VideoMode
 
     internal override byte GetVramByte(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         if (offset - BaseAddress >= VgaCard.TotalVramBytes) {
             return 0;
         }
@@ -80,6 +82,9 @@ public class TextMode : VideoMode
     }
     internal override void SetVramByte(uint offset, byte value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         if (offset - BaseAddress >= VgaCard.TotalVramBytes) {
             return;
         }
@@ -111,16 +116,25 @@ public class TextMode : VideoMode
     }
     internal override ushort GetVramWord(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         uint value = GetVramByte(offset);
         return (ushort)(value | (uint)(GetVramByte(offset + 1u) << 8));
     }
     internal override void SetVramWord(uint offset, ushort value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         this.SetVramByte(offset, (byte)value);
         this.SetVramByte(offset + 1u, (byte)(value >> 8));
     }
     internal override uint GetVramDWord(uint offset)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         uint value = GetVramByte(offset);
         value |= (uint)(GetVramByte(offset + 1u) << 8);
         value |= (uint)(GetVramByte(offset + 2u) << 16);
@@ -129,6 +143,9 @@ public class TextMode : VideoMode
     }
     internal override void SetVramDWord(uint offset, uint value)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         this.SetVramByte(offset, (byte)value);
         this.SetVramByte(offset + 1u, (byte)(value >> 8));
         this.SetVramByte(offset + 2u, (byte)(value >> 16));
@@ -136,11 +153,17 @@ public class TextMode : VideoMode
     }
     internal override void WriteCharacter(int x, int y, int index, byte foreground, byte background)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         int value = index | (foreground << 8) | (background << 12);
         SetVramWord((uint)((y * this.Stride) + (x * 2)) + BaseAddress, (ushort)value);
     }
     internal override void InitializeMode(VgaCard video)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         base.InitializeMode(video);
         this.graphics.GraphicsMode = 0x10; // OddEven mode
         this.graphics.MiscellaneousGraphics = 0xE0; // OddEven mode
@@ -152,6 +175,9 @@ public class TextMode : VideoMode
     /// </summary>
     internal void Clear()
     {
+        if (base.IsDisposed) {
+            return;
+        }
         int total = this.Width * this.Height;
         unsafe
         {
@@ -170,6 +196,9 @@ public class TextMode : VideoMode
     /// <param name="height">Height of the rectangle to clear.</param>
     public void Clear(Point offset, int width, int height)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         if (width <= 0 || height <= 0) {
             return;
         }
@@ -205,6 +234,9 @@ public class TextMode : VideoMode
     /// <param name="backgroundAttribute">Attribute to fill in the source rectangle.</param>
     internal void MoveBlock(Point sourceOffset, Point destinationOffset, int width, int height, byte backgroundCharacter, byte backgroundAttribute)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         byte[,] charBuffer = new byte[height, width];
         byte[,] attrBuffer = new byte[height, width];
 
@@ -249,6 +281,9 @@ public class TextMode : VideoMode
     /// <returns>Character and attribute at this specified position.</returns>
     internal ushort GetCharacter(int x, int y)
     {
+        if (base.IsDisposed) {
+            return 0;
+        }
         int pageOffset = DisplayPageSize * this.ActiveDisplayPage;
 
         unsafe
@@ -268,6 +303,9 @@ public class TextMode : VideoMode
     /// <param name="backgroundAttribute">Attribute to fill in bottom rows.</param>
     public void ScrollUp(int x1, int y1, int x2, int y2, int lines, byte backgroundAttribute)
     {
+        if (base.IsDisposed) {
+            return;
+        }
         int pageOffset = DisplayPageSize * this.ActiveDisplayPage;
 
         unsafe

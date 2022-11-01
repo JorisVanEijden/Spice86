@@ -20,6 +20,9 @@ public class GraphicsPresenter16 : Presenter
     /// </summary>
     protected override void DrawFrame(IntPtr destination)
     {
+        if(IsDisposed) {
+            return;
+        }
         int totalPixels = this.VideoMode.Width * this.VideoMode.Height;
 
         unsafe

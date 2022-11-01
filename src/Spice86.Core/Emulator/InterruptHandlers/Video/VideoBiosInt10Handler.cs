@@ -19,13 +19,14 @@ using Spice86.Shared;
 /// TODO: Remove pointers (or at least use a private fixed pointer for VideoMemory, like in Memory).
 /// TODO: Keep this overridable, don't put anything in Run method.
 /// </summary>
-public class VideoBiosInt10Handler : InterruptHandler {
+public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
     public const int BiosVideoMode = 0x49;
     public static readonly uint BIOS_VIDEO_MODE_ADDRESS = MemoryUtils.ToPhysicalAddress(MemoryMap.BiosDataAreaSegment, BiosVideoMode);
     public static readonly uint CRT_IO_PORT_ADDRESS_IN_RAM = MemoryUtils.ToPhysicalAddress(MemoryMap.BiosDataAreaSegment, MemoryMap.BiosDataAreaOffsetCrtIoPort);
     private readonly VgaCard _vgaCard;
     private readonly ILogger _logger;
     private readonly byte _currentDisplayPage = 0;
+    private bool _disposed;
     private byte _numberOfScreenColumns = 80;
     private static readonly long HorizontalBlankingTime = HorizontalPeriod / 2;
     private static readonly long HorizontalPeriod = (long)((1000.0 / 60.0) / 480.0 * Pic.StopwatchTicksPerMillisecond);
@@ -38,6 +39,8 @@ public class VideoBiosInt10Handler : InterruptHandler {
         FillDispatchTable();
         InitializeStaticFunctionalityTable();
     }
+
+    public bool IsDisposed => _disposed;
 
     /// <summary>
     /// Writes values to the static functionality table in emulated memory.
@@ -161,7 +164,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
 
     /// <summary>
     /// Sets DAC color registers to values in emulated RAM.
-    /// TODO: That's on VgaFunctions.0x12 too ?! (same as GiveVideoSubsystemConfigurationInCpuState)
+    /// TODO: That's on VgaFunctions.0x12 too ?! (same as VideoSubsystemConfiguration)
     /// </summary>
     private void SetDacRegisters() {
         ushort segment = _state.ES;
@@ -293,13 +296,6 @@ public class VideoBiosInt10Handler : InterruptHandler {
             _logger.Information("SET VIDEO MODE {@VideoMode}", ConvertUtils.ToHex8(mode));
         }
         _memory.SetUint8(BIOS_VIDEO_MODE_ADDRESS, mode);
-        _numberOfScreenColumns = (VideoMode10h)mode switch {
-            VideoMode10h.Text40x25x1 => 40,
-            VideoMode10h.Text80x25x1 => 40,
-            VideoMode10h.ColorText40x25x4 => 40,
-            VideoMode10h.ColorText80x25x4 => 80,
-            _ => 80
-        };
         _vgaCard.SetVideoModeValue(mode);
         _machine.OnVideoModeChanged(EventArgs.Empty);
     }
@@ -322,7 +318,8 @@ public class VideoBiosInt10Handler : InterruptHandler {
         _dispatchTable.Add(VgaFunctions.TeletypeOutput, new Callback(VgaFunctions.TeletypeOutput, WriteTextInTeletypeMode));
         _dispatchTable.Add(VgaFunctions.GetDisplayMode, new Callback(VgaFunctions.GetDisplayMode, GetVideoStatus));
         _dispatchTable.Add(VgaFunctions.Palette_SetSingleDacRegister, new Callback(VgaFunctions.Palette_SetSingleDacRegister, GetSetPaletteRegisters));
-        _dispatchTable.Add(VgaFunctions.Palette_SetDacRegisters, new Callback(VgaFunctions.Palette_SetDacRegisters, GiveVideoSubsystemConfigurationInCpuState));
+        // FIXME: Or SetDacRegisters from Aeon code...
+        _dispatchTable.Add(VgaFunctions.Palette_SetDacRegisters, new Callback(VgaFunctions.Palette_SetDacRegisters, VideoSubsystemConfiguration));
         _dispatchTable.Add(VgaFunctions.Palette_ReadDacRegisters, new Callback(VgaFunctions.Palette_ReadDacRegisters, ReadDacRegisters));
         _dispatchTable.Add(VgaFunctions.GetDisplayCombinationCode, new Callback(VgaFunctions.GetDisplayCombinationCode, VideoDisplayCombination));
         // TODO: Fix this, this throws an exception because the key is the same as an existing entry...
@@ -354,7 +351,7 @@ public class VideoBiosInt10Handler : InterruptHandler {
         _state.AH = 0x00;
     }
 
-    private void GiveVideoSubsystemConfigurationInCpuState() {
+    private void VideoSubsystemConfiguration() {
         byte op = _state.BL;
         switch (op) {
             case 0x0:
@@ -377,6 +374,20 @@ public class VideoBiosInt10Handler : InterruptHandler {
             default:
                 throw new UnhandledOperationException(_machine,
                     $"Unhandled operation for videoSubsystemConfiguration op={ConvertUtils.ToHex8(op)}");
+        }
+    }
+
+    public void Dispose() {
+        this.Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing) {
+        if(!_disposed) {
+            if (disposing) {
+                _vgaCard.Dispose();
+            }
+            _disposed = true;
         }
     }
 }

@@ -22,6 +22,9 @@ public class GraphicsPresenterX : Presenter
 
     public override MemoryBitmap Dump()
     {
+        if (IsDisposed) {
+            return new(0,0);
+        }
         int width = this.VideoMode.Width;
         int height = this.VideoMode.Height;
         ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
@@ -65,6 +68,9 @@ public class GraphicsPresenterX : Presenter
     /// </summary>
     protected override void DrawFrame(IntPtr destination)
     {
+        if (IsDisposed) {
+            return;
+        }
         int width = this.VideoMode.Width;
         int height = this.VideoMode.Height;
         ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;

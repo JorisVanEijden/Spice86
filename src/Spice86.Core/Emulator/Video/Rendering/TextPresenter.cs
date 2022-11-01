@@ -46,8 +46,10 @@ public class TextPresenter : Presenter
     /// </summary>
     protected override void DrawFrame(IntPtr destination)
     {
-        unsafe
-        {
+        if (IsDisposed) {
+            return;
+        }
+        unsafe {
             ReadOnlySpan<Rgb> palette = this.VideoMode.Palette;
             byte* internalPalette = stackalloc byte[16];
             this.VideoMode.InternalPalette.CopyTo(new Span<byte>(internalPalette, 16));
@@ -80,6 +82,9 @@ public class TextPresenter : Presenter
     /// <param name="backgroundColor">Background color of the character.</param>
     private unsafe void DrawCharacter(uint* dest, byte index, uint foregroundColor, uint backgroundColor)
     {
+        if (IsDisposed) {
+            return;
+        }
         if (Vector.IsHardwareAccelerated)
         {
             ReadOnlySpan<uint> indexes = stackalloc uint[] { 1 << 7, 1 << 6, 1 << 5, 1 << 4, 1 << 3, 1 << 2, 1 << 1, 1 << 0 };

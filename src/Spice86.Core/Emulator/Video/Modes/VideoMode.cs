@@ -1,7 +1,6 @@
 ﻿namespace Spice86.Core.Emulator.Video.Modes;
 
 using Spice86.Core.Emulator.Devices.Video;
-using Spice86.Core.Emulator.InterruptHandlers.Video;
 
 using Spice86.Core.Emulator.Memory;
 
@@ -23,8 +22,10 @@ public abstract class VideoMode {
     private readonly CrtController crtController;
     private readonly AttributeController attributeController;
     private readonly VgaDac dac;
+    private readonly VgaCard _video;
 
     private protected VideoMode(int width, int height, int bpp, bool planar, int fontHeight, VideoModeType modeType, VgaCard video) {
+        _video = video;
         Width = width;
         Height = height;
         OriginalHeight = height;
@@ -41,20 +42,8 @@ public abstract class VideoMode {
 
         InitializeFont(video.Machine.Memory);
     }
-    private protected VideoMode(int width, int height, VideoMode baseMode) {
-        Width = width;
-        Height = height;
-        BitsPerPixel = baseMode.BitsPerPixel;
-        IsPlanar = baseMode.IsPlanar;
-        FontHeight = baseMode.FontHeight;
-        VideoModeType = baseMode.VideoModeType;
-        dac = baseMode.dac;
-        crtController = baseMode.crtController;
-        attributeController = baseMode.attributeController;
-        unsafe {
-            VideoRam = baseMode.VideoRam;
-        }
-    }
+
+    protected bool IsDisposed => _video.IsDisposed;
 
     /// <summary>
     /// Gets the width of the emulated video mode in pixels or characters.
@@ -115,7 +104,7 @@ public abstract class VideoMode {
     /// <summary>
     /// Gets a pointer to the emulated video RAM.
     /// </summary>
-    public unsafe byte* VideoRam { get; }
+    public unsafe IntPtr VideoRam { get; }
     /// <summary>
     /// Gets the current EGA/VGA compatibility map.
     /// </summary>
@@ -204,7 +193,7 @@ public abstract class VideoMode {
         video.Machine.Memory.Bios.CharacterPointHeight = (ushort)FontHeight;
 
         unsafe {
-            byte* ptr = VideoRam;
+            byte* ptr = (byte*)VideoRam.ToPointer();
             for (int i = 0; i < VgaCard.TotalVramBytes; i++) {
                 ptr[i] = 0;
             }
@@ -238,7 +227,7 @@ public abstract class VideoMode {
     /// </summary>
     /// <param name="video">Current VideoHandler instance.</param>
     /// <returns>Pointer to the mode's video RAM.</returns>
-    internal unsafe virtual byte* GetVideoRamPointer(VgaCard video) => video.RawView;
+    internal unsafe virtual IntPtr GetVideoRamPointer(VgaCard video) => video.VideoRam;
 
     /// <summary>
     /// Copies the current font from emulated memory into a buffer.

@@ -12,9 +12,12 @@ public sealed class Vga256 : VideoMode
 
     public Vga256(int width, int height, VgaCard video) : base(width, height, 8, false, 8, VideoModeType.Graphics, video)
     {
+        if(base.IsDisposed) {
+            return;
+        }
         unsafe
         {
-            this.videoRam = video.RawView;
+            this.videoRam = (byte*)video.VideoRam;
         }
     }
 
@@ -22,50 +25,64 @@ public sealed class Vga256 : VideoMode
 
     internal override byte GetVramByte(uint offset)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return 0;
+        }
+        unsafe {
             return videoRam[offset];
         }
     }
     internal override void SetVramByte(uint offset, byte value)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             videoRam[offset] = value;
         }
     }
     internal override ushort GetVramWord(uint offset)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return 0;
+        }
+        unsafe {
             return *(ushort*)(videoRam + offset);
         }
     }
     internal override void SetVramWord(uint offset, ushort value)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             *(ushort*)(videoRam + offset) = value;
         }
     }
     internal override uint GetVramDWord(uint offset)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return 0;
+        }
+        unsafe {
             return *(uint*)(videoRam + offset);
         }
     }
     internal override void SetVramDWord(uint offset, uint value)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             *(uint*)(videoRam + offset) = value;
         }
     }
     internal override void WriteCharacter(int x, int y, int index, byte foreground, byte background)
     {
-        unsafe
-        {
+        if (base.IsDisposed) {
+            return;
+        }
+        unsafe {
             int stride = this.Stride;
             int startPos = (y * stride * 8) + x * 8;
             byte[] font = this.Font;

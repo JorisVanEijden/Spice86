@@ -14,13 +14,16 @@ public class GraphicsPresenter2 : Presenter
 
     protected override void DrawFrame(IntPtr destination)
     {
+        if (IsDisposed) {
+            return;
+        }
         int width = this.VideoMode.Width;
         int height = this.VideoMode.Height;
         int stride = this.VideoMode.Stride;
 
         unsafe
         {
-            byte* srcPtr = this.VideoMode.VideoRam;
+            byte* srcPtr = (byte*)this.VideoMode.VideoRam.ToPointer();
             uint* destPtr = (uint*)destination.ToPointer();
 
             uint* palette = stackalloc uint[4];

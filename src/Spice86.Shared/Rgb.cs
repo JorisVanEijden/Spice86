@@ -28,6 +28,6 @@ public record struct Rgb {
     }
 
     public static implicit operator uint(Rgb v) {
-        return v.ToRgba();
+        return (uint)v.R + v.G + v.B;
     }
 }

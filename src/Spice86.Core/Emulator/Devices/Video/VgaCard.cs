@@ -17,6 +17,7 @@ using Spice86.Shared.Interfaces;
 
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Spice86.Core.Emulator.Video;
 using Spice86.Core.DI;
 
@@ -26,7 +27,7 @@ using Spice86.Core.DI;
 /// TODO: Every time a VideoMode change occurs, ensure this class is called properly.
 /// TODO: Ensure that unused code (such as SwitchTo80x50TextMode) is used.
 /// </summary>
-public class VgaCard : DefaultIOPortHandler {
+public class VgaCard : DefaultIOPortHandler, IDisposable {
     private readonly ILogger _logger;
 
     // Means the CRT is busy drawing a line, tells the program it should not draw
@@ -43,6 +44,7 @@ public class VgaCard : DefaultIOPortHandler {
 
     private readonly IGui? _gui;
     private byte _crtStatusRegister = StatusRegisterRetraceActive;
+    private bool _disposed;
 
     private AttributeControllerRegister attributeRegister;
     private CrtControllerRegister crtRegister;
@@ -55,6 +57,8 @@ public class VgaCard : DefaultIOPortHandler {
     private bool attributeDataMode;
     private bool defaultPaletteLoading = true;
     private int verticalTextResolution = 16;
+
+    public bool IsDisposed => _disposed;
 
     /// <summary>
     /// Gets the VGA attribute controller.
@@ -85,13 +89,11 @@ public class VgaCard : DefaultIOPortHandler {
     /// Segment of the VGA static functionality table.
     /// </summary>
     public const ushort StaticFunctionalityTableSegment = 0x0100;
+
     /// <summary>
     /// Gets a pointer to the emulated video RAM.
     /// </summary>
-    public unsafe byte* RawView { get; private set; }
-
-
-    public byte[] VideoRam { get; private set; }
+    public IntPtr VideoRam { get; }
 
     public Machine Machine => _machine;
 
@@ -103,17 +105,15 @@ public class VgaCard : DefaultIOPortHandler {
     public VgaCard(Machine machine, ILogger logger, IGui? gui, Configuration configuration) : base(machine, configuration) {
         _logger = logger;
         _gui = gui;
-        this.VideoRam = new byte[TotalVramBytes];
         unsafe {
-            fixed (byte* ramPtr = this.VideoRam) {
-                this.RawView = ramPtr;
-            }
+            this.VideoRam = new IntPtr(NativeMemory.AllocZeroed(TotalVramBytes));
         }
         VgaDac = new VgaDac(machine);
         Memory memory = machine.Memory;
         memory.SetUInt32(StaticFunctionalityTableSegment, 0, 0x000FFFFF); // supports all video modes
         memory.SetByte(StaticFunctionalityTableSegment, 0x07, 0x07); // supports all scanlines
         this.TextConsole = new TextConsole(this, machine.Memory.Bios);
+        this.SetVideoModeValue((byte)VideoMode10h.ColorText80x25x4);
     }
 
     public void GetBlockOfDacColorRegisters(int firstRegister, int numberOfColors, uint colorValuesAddress) {
@@ -131,6 +131,7 @@ public class VgaCard : DefaultIOPortHandler {
         if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
             _logger.Information("CHECKING RETRACE");
         }
+        attributeDataMode = false;
         byte res = _crtStatusRegister;
         // Next time we will be called retrace will be active, and this until the retrace tick
         _crtStatusRegister = StatusRegisterRetraceActive;
@@ -141,6 +142,9 @@ public class VgaCard : DefaultIOPortHandler {
     /// Gets the current display videoMode.
     /// </summary>
     public VideoMode? CurrentMode { get; private set; }
+
+
+    public override ushort ReadWord(int port) => this.ReadByte(port);
 
 
     /// <summary>
@@ -232,13 +236,13 @@ public class VgaCard : DefaultIOPortHandler {
     public override byte ReadByte(int port) {
         switch (port) {
             case VideoPorts.DacAddressReadMode:
-                return (byte)VgaDac.ReadIndex;
+                return GetVgaReadIndex();
 
             case VideoPorts.DacAddressWriteMode:
                 return (byte)VgaDac.WriteIndex;
 
             case VideoPorts.DacData:
-                return VgaDac.ReadColor();
+                return RgbDataRead();
 
             case VideoPorts.GraphicsControllerAddress:
                 return (byte)graphicsRegister;
@@ -268,8 +272,7 @@ public class VgaCard : DefaultIOPortHandler {
 
             case VideoPorts.InputStatus1Read:
             case VideoPorts.InputStatus1ReadAlt:
-                attributeDataMode = false;
-                return GetInputStatus1Value();
+                return GetStatusRegisterPort();
 
             default:
                 return 0;
@@ -297,11 +300,11 @@ public class VgaCard : DefaultIOPortHandler {
                 break;
 
             case VideoPorts.DacAddressWriteMode:
-                VgaDac.WriteIndex = value;
+                SetVgaWriteIndex(value);
                 break;
 
             case VideoPorts.DacData:
-                VgaDac.WriteColor(value);
+                RgbDataWrite(value);
                 break;
 
             case VideoPorts.GraphicsControllerAddress:
@@ -535,5 +538,21 @@ public class VgaCard : DefaultIOPortHandler {
 
     public void UpdateScreen() {
         _gui?.Draw();
+    }
+
+    public void Dispose() {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    private void Dispose(bool disposing) {
+        if(!_disposed) {
+            if(disposing && VideoRam != IntPtr.Zero) {
+                unsafe {
+                    NativeMemory.Free(VideoRam.ToPointer());
+                }
+            }
+            _disposed = true;
+        }
     }
 }

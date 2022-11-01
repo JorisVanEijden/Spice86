@@ -243,7 +243,7 @@ public class Memory {
     /// <summary>
     /// Pointer to the start of the emulated physical memory.
     /// </summary>
-    internal unsafe byte* RawView { get; private set; }
+    private unsafe byte* RawView { get; set; }
 
     public Span<byte> GetSpan(uint segment, uint offset, int length) {
         unsafe {
@@ -669,7 +669,7 @@ public class Memory {
             {
                 Unsafe.WriteUnaligned(this.RawView + fullAddress, value);
             }
-            else if(this.Video is not null)
+            else if(this.Video is not null && !this.Video.IsDisposed)
             {
                 if (sizeof(T) == 1) {
                     this._machine.VgaCard.SetVramByte(fullAddress - VramAddress, Unsafe.As<T, byte>(ref value));
@@ -767,34 +767,39 @@ public class Memory {
     public void SetUint16(uint address, ushort value) {
         byte value0 = (byte)value;
         MonitorWriteAccess(address, value0);
-        Ram[address] = value0;
+        //Ram[address] = value0;
 
         byte value1 = (byte)(value >> 8);
         MonitorWriteAccess(address + 1, value1);
-        Ram[address + 1] = value1;
+        //Ram[address + 1] = value1;
+        PhysicalWrite(address, value);
     }
 
     public void SetUint32(uint address, uint value) {
         byte value0 = (byte)value;
         MonitorWriteAccess(address, value0);
-        Ram[address] = value0;
+        //Ram[address] = value0;
 
         byte value1 = (byte)(value >> 8);
         MonitorWriteAccess(address + 1, value1);
-        Ram[address + 1] = value1;
+        //Ram[address + 1] = value1;
 
         byte value2 = (byte)(value >> 16);
         MonitorWriteAccess(address + 2, value2);
-        Ram[address + 2] = value2;
+        //Ram[address + 2] = value2;
 
         byte value3 = (byte)(value >> 24);
         MonitorWriteAccess(address + 3, value3);
-        Ram[address + 3] = value3;
+        //Ram[address + 3] = value3;
+
+        PhysicalWrite(address, value);
+
     }
 
     public void SetUint8(uint address, byte value) {
         MonitorWriteAccess(address, value);
-        MemoryUtils.SetUint8(Ram, address, value);
+        //MemoryUtils.SetUint8(Ram, address, value);
+        PhysicalWrite(address, value);
     }
 
     public void ToggleBreakPoint(BreakPoint breakPoint, bool on) {
