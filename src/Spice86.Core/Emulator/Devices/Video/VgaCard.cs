@@ -55,7 +55,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
     private static readonly long RefreshRate = (long)((1000.0 / 60.0) * Pic.StopwatchTicksPerMillisecond);
     private static readonly long VerticalBlankingTime = RefreshRate / 40;
     private bool attributeDataMode;
-    private bool defaultPaletteLoading = true;
     private int verticalTextResolution = 16;
 
     public bool IsDisposed => _disposed;
@@ -152,37 +151,72 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
     /// </summary>
     /// <param name="offset">Offset of byte to read.</param>
     /// <returns>Byte read from video RAM.</returns>
-    public byte GetVramByte(uint offset) => this.CurrentMode?.GetVramByte(offset) ?? 0;
+    public byte GetVramByte(uint offset) {
+        if(_disposed) {
+            return 0;
+        }
+        return this.CurrentMode?.GetVramByte(offset) ?? 0;
+    }
+
     /// <summary>
     /// Sets a byte in video RAM to a specified value.
     /// </summary>
     /// <param name="offset">Offset of byte to set.</param>
     /// <param name="value">Value to write.</param>
-    public void SetVramByte(uint offset, byte value) => this.CurrentMode?.SetVramByte(offset, value);
+    public void SetVramByte(uint offset, byte value) {
+        if (_disposed) {
+            return;
+        }
+        this.CurrentMode?.SetVramByte(offset, value);
+    }
+
     /// <summary>
     /// Reads a word from video RAM.
     /// </summary>
     /// <param name="offset">Offset of word to read.</param>
     /// <returns>Word read from video RAM.</returns>
-    public ushort GetVramWord(uint offset) => this.CurrentMode?.GetVramWord(offset) ?? 0;
+    public ushort GetVramWord(uint offset) {
+        if (_disposed) {
+            return 0;
+        }
+        return this.CurrentMode?.GetVramWord(offset) ?? 0;
+    }
+
     /// <summary>
     /// Sets a word in video RAM to a specified value.
     /// </summary>
     /// <param name="offset">Offset of word to set.</param>
     /// <param name="value">Value to write.</param>
-    public void SetVramWord(uint offset, ushort value) => this.CurrentMode?.SetVramWord(offset, value);
+    public void SetVramWord(uint offset, ushort value) {
+        if (_disposed) {
+            return;
+        }
+        this.CurrentMode?.SetVramWord(offset, value);
+    }
+
     /// <summary>
     /// Reads a doubleword from video RAM.
     /// </summary>
     /// <param name="offset">Offset of doubleword to read.</param>
     /// <returns>Doubleword read from video RAM.</returns>
-    public uint GetVramDWord(uint offset) => this.CurrentMode?.GetVramDWord(offset) ?? 0;
+    public uint GetVramDWord(uint offset) {
+        if (_disposed) {
+            return 0;
+        }
+        return this.CurrentMode?.GetVramDWord(offset) ?? 0;
+    }
+
     /// <summary>
     /// Sets a doubleword in video RAM to a specified value.
     /// </summary>
     /// <param name="offset">Offset of doubleword to set.</param>
     /// <param name="value">Value to write.</param>
-    public void SetVramDWord(uint offset, uint value) => this.CurrentMode?.SetVramDWord(offset, value);
+    public void SetVramDWord(uint offset, uint value) {
+        if (_disposed) {
+            return;
+        }
+        this.CurrentMode?.SetVramDWord(offset, value);
+    }
 
     /// <summary>
     /// Changes the current video videoMode to match the new value of the vertical end register.
@@ -296,7 +330,7 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
     public override void WriteByte(int port, byte value) {
         switch (port) {
             case VideoPorts.DacAddressReadMode:
-                VgaDac.ReadIndex = value;
+                SetVgaReadIndex(value);
                 break;
 
             case VideoPorts.DacAddressWriteMode:
@@ -523,11 +557,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
         this.CurrentMode = mode;
         mode.InitializeMode(this);
         Graphics.WriteRegister(GraphicsRegister.ColorDontCare, 0x0F);
-
-        if (this.defaultPaletteLoading) {
-            VgaDac.Reset();
-        }
-
         _machine.OnVideoModeChanged(EventArgs.Empty);
     }
 

@@ -161,28 +161,6 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
         }
     }
 
-
-    /// <summary>
-    /// Sets DAC color registers to values in emulated RAM.
-    /// TODO: That's on VgaFunctions.0x12 too ?! (same as VideoSubsystemConfiguration)
-    /// </summary>
-    private void SetDacRegisters() {
-        ushort segment = _state.ES;
-        uint offset = (ushort)_state.DX;
-        int start = _state.BX;
-        int count = _state.CX;
-
-        for (int i = start; i < count; i++) {
-            byte r = _memory.GetByte(segment, offset);
-            byte g = _memory.GetByte(segment, offset + 1u);
-            byte b = _memory.GetByte(segment, offset + 2u);
-
-            _vgaCard.VgaDac.SetColor((byte)(start + i), r, g, b);
-
-            offset += 3u;
-        }
-    }
-
     /// <summary>
     /// Gets a specific EGA color palette register.
     /// </summary>

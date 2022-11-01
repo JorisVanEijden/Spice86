@@ -8,7 +8,7 @@ public class GraphicsPresenter2 : Presenter
     /// </summary>
     /// <param name="dest">Pointer to destination bitmap.</param>
     /// <param name="videoMode">VideoMode instance describing the video mode.</param>
-    public unsafe GraphicsPresenter2(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) : base(videoMode, colorConversionFunc)
+    public unsafe GraphicsPresenter2(VideoMode videoMode) : base(videoMode)
     {
     }
 

@@ -216,14 +216,14 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
         }
 
         if (videoMode.VideoModeType == VideoModeType.Text) {
-            return new TextPresenter(videoMode, ToNativePixelFormat);
+            return new TextPresenter(videoMode);
         } else {
             Presenter? presenter = videoMode.BitsPerPixel switch {
-                2 => new GraphicsPresenter2(videoMode, ToNativePixelFormat),
-                4 => new GraphicsPresenter4(videoMode, ToNativePixelFormat),
-                8 when videoMode.IsPlanar => new GraphicsPresenterX(videoMode, ToNativePixelFormat),
-                8 when !videoMode.IsPlanar => new GraphicsPresenter8(videoMode, ToNativePixelFormat),
-                16 => new GraphicsPresenter16(videoMode, ToNativePixelFormat),
+                2 => new GraphicsPresenter2(videoMode),
+                4 => new GraphicsPresenter4(videoMode),
+                8 when videoMode.IsPlanar => new GraphicsPresenterX(videoMode),
+                8 when !videoMode.IsPlanar => new GraphicsPresenter8(videoMode),
+                16 => new GraphicsPresenter16(videoMode),
                 _ => null
             };
             // Ensure that we only present what is in within our limits (ie. for Gdb AddBuffer command)
@@ -233,36 +233,6 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
             }
             return presenter;
         }
-    }
-
-
-    private uint ToNativePixelFormat(uint pixel) {
-        if (this.Bitmap is null) {
-            return pixel;
-        }
-        using ILockedFramebuffer buf = this.Bitmap.Lock();
-        return buf.Format switch {
-            PixelFormat.Rgba8888 => ToRgba(pixel),
-            PixelFormat.Rgb565 => ToRgba(pixel),
-            PixelFormat.Bgra8888 => ToArgb(pixel),
-            _ => pixel
-        };
-    }
-
-
-    private static uint ToRgba(uint pixel) {
-        var color = System.Drawing.Color.FromArgb((int)pixel);
-        return (uint)(color.R << 16 | color.G << 8 | color.B) | 0xFF000000;
-    }
-
-    private static uint ToBgra(uint pixel) {
-        var color = System.Drawing.Color.FromArgb((int)pixel);
-        return (uint)(color.B << 16 | color.G << 8 | color.R) | 0xFF000000;
-    }
-
-    private static uint ToArgb(uint pixel) {
-        var color = System.Drawing.Color.FromArgb((int)pixel);
-        return 0xFF000000 | ((uint)color.R << 16) | ((uint)color.G << 8) | color.B;
     }
 
     private void UpdateGui() {

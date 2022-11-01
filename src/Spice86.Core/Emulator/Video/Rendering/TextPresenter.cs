@@ -20,9 +20,8 @@ public class TextPresenter : Presenter
     /// <summary>
     /// Initializes a new instance of the TextPresenter class.
     /// </summary>
-    /// <param name="dest">Pointer to destination bitmap.</param>
     /// <param name="videoMode">VideoMode instance describing the video mode.</param>
-    public unsafe TextPresenter(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) : base(videoMode, colorConversionFunc)
+    public unsafe TextPresenter(VideoMode videoMode) : base(videoMode)
     {
         unsafe
         {
@@ -66,7 +65,7 @@ public class TextPresenter : Presenter
                 {
                     uint srcOffset = y * this.consoleWidth + x;
 
-                    uint* dest = destPtr + y * this.consoleWidth * 8 * this.fontHeight + x * 8;
+                    uint* dest = destPtr + y * this.consoleWidth * 8 * this.fontHeight + (x * 8);
                     DrawCharacter(dest, textPlane[srcOffset], palette[internalPalette[attrPlane[srcOffset] & 0x0F]], palette[internalPalette[attrPlane[srcOffset] >> 4]]);
                 }
             }
@@ -105,7 +104,7 @@ public class TextPresenter : Presenter
                     var equalsResult = Vector.Equals(maskResult, indexVector[i]);
                     var result = Vector.ConditionalSelect(equalsResult, foregroundVector, backgroundVector);
                     for (int j = 0; j < Vector<uint>.Count; j++) {
-                        dest[x + j] = ToNativeColorFormat(result[j]);
+                        dest[x + j] = result[j];
                     }
 
                     x += Vector<uint>.Count;
@@ -121,7 +120,7 @@ public class TextPresenter : Presenter
                 byte current = this.font[(index * fontHeight) + y];
 
                 for (int x = 0; x < 8; x++) {
-                    dest[x] = ToNativeColorFormat((current & (1 << (7 - x))) != 0 ? foregroundColor : backgroundColor);
+                    dest[x] = (current & (1 << (7 - x))) != 0 ? foregroundColor : backgroundColor;
                 }
 
                 dest += this.consoleWidth * 8;

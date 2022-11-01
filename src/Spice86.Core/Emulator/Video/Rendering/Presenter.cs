@@ -1,4 +1,5 @@
 ﻿using Spice86.Core.Emulator.Video.Modes;
+using Spice86.Shared;
 
 #nullable enable
 
@@ -16,17 +17,8 @@ public abstract class Presenter : IDisposable {
     /// Initializes a new instance of the <see cref="Presenter"/> class.
     /// </summary>
     /// <param name="videoMode"><see cref="Modes.VideoMode"/> instance describing the video mode.</param>
-    /// <param name="colorConversionFunc">The func to call to convert the data to the native platform's pixel format</param>
-    protected Presenter(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) {
+    protected Presenter(VideoMode videoMode) {
         this.VideoMode = videoMode;
-        _colorConverterFunc = colorConversionFunc;
-    }
-
-    protected unsafe uint ToNativeColorFormat(uint pixel) {
-        if (_colorConverterFunc is null) {
-            return pixel;
-        }
-        return _colorConverterFunc(pixel);
     }
 
     protected bool IsDisposed => _disposed;
@@ -105,6 +97,7 @@ public abstract class Presenter : IDisposable {
             this.scaler.Apply(this.internalBuffer.PixelBuffer, destination);
         }
     }
+    protected uint ToNativeColorFormat(Rgb rgb) => rgb.ToArgb();
 
     public virtual MemoryBitmap? Dump() => null;
 

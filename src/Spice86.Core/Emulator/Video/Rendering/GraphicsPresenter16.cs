@@ -11,7 +11,7 @@ public class GraphicsPresenter16 : Presenter
     /// Initializes a new instance of the <see cref="GraphicsPresenter16"/> class.
     /// </summary>
     /// <param name="videoMode">VideoMode instance describing the video mode.</param>
-    public unsafe GraphicsPresenter16(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) : base(videoMode, colorConversionFunc)
+    public unsafe GraphicsPresenter16(VideoMode videoMode) : base(videoMode)
     {
     }
 

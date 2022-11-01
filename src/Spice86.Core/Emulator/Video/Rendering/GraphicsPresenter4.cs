@@ -14,7 +14,7 @@ public class GraphicsPresenter4 : Presenter
     /// </summary>
     /// <param name="dest">Pointer to destination bitmap.</param>
     /// <param name="videoMode">VideoMode instance describing the video mode.</param>
-    public unsafe GraphicsPresenter4(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) : base(videoMode, colorConversionFunc)
+    public unsafe GraphicsPresenter4(VideoMode videoMode) : base(videoMode)
     {
     }
 

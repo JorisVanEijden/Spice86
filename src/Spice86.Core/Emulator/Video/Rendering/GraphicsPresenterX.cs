@@ -13,8 +13,7 @@ public class GraphicsPresenterX : Presenter
     /// Initializes a new instance of the GraphicsPresenterX class.
     /// </summary>
     /// <param name="videoMode">VideoMode instance describing the video mode.</param>
-    /// <param name="colorConversionFunc"></param>
-    public unsafe GraphicsPresenterX(VideoMode videoMode, Func<uint, uint>? colorConversionFunc = null) : base(videoMode, colorConversionFunc)
+    public unsafe GraphicsPresenterX(VideoMode videoMode) : base(videoMode)
     {
     }
 
