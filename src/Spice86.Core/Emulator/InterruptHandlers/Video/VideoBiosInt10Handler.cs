@@ -1,11 +1,11 @@
+using Spice86.Core.Emulator.Devices.ExternalInput;
+
 namespace Spice86.Core.Emulator.InterruptHandlers.Video;
 
 using Serilog;
 
 using Spice86.Core.Emulator.Callback;
-using Spice86.Core.Emulator.Devices.ExternalInput;
 using Spice86.Core.Emulator.Devices.Video;
-using Spice86.Core.Emulator.Errors;
 using Spice86.Core.Emulator.InterruptHandlers;
 using Spice86.Core.Emulator.Memory;
 using Spice86.Core.Emulator.Video;
@@ -17,7 +17,6 @@ using Spice86.Shared;
 /// <summary>
 /// TODO: Make unused / missing code used.
 /// TODO: Remove pointers (or at least use a private fixed pointer for VideoMemory, like in Memory).
-/// TODO: Keep this overridable, don't put anything in Run method.
 /// </summary>
 public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
     public const int BiosVideoMode = 0x49;
@@ -51,19 +50,6 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
         memory.SetByte(VgaCard.StaticFunctionalityTableSegment, 0x07, 0x07); // supports all scanlines
     }
 
-
-    public void GetBlockOfDacColorRegisters() {
-        ushort firstRegisterToGet = _state.BX;
-        ushort numberOfColorsToGet = _state.CX;
-        if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _logger.Information("GET BLOCKS OF DAC COLOR REGISTERS. First register is {@FirstRegisterToGet}, getting {@NumberOfColorsToGet} colors, values are to be stored at address {@EsDx}", ConvertUtils.ToHex(firstRegisterToGet), numberOfColorsToGet, ConvertUtils.ToSegmentedAddressRepresentation(_state.ES, _state.DX));
-        }
-
-        uint colorValuesAddress = MemoryUtils.ToPhysicalAddress(_state.ES, _state.DX);
-        _vgaCard.GetBlockOfDacColorRegisters(firstRegisterToGet, numberOfColorsToGet, colorValuesAddress);
-    }
-
-
     /// <summary>
     /// Gets information about BIOS fonts.
     /// </summary>
@@ -76,7 +62,7 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
             0x01 => _memory.GetRealModeInterruptAddress(0x43),
             0x02 or 0x05 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x14Offset),
             0x03 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset),
-            0x04 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset + 128 * 8),
+            0x04 => new SegmentedAddress(Memory.FontSegment, Memory.Font8x8Offset + (128 * 8)),
             _ => new SegmentedAddress(Memory.FontSegment, Memory.Font8x16Offset),
         };
 
@@ -182,22 +168,68 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
         if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
             _logger.Information("GET/SET PALETTE REGISTERS {@Operation}", ConvertUtils.ToHex8(op));
         }
+        switch (_state.AL) {
+            case VideoFunctions.Palette_SetSingleRegister:
+                SetEgaPaletteRegister(_state.BL, _state.BH);
+                break;
 
-        if (op == 0x12) {
-            SetBlockOfDacColorRegisters();
-        } else if (op == 0x17) {
-            GetBlockOfDacColorRegisters();
-        } else {
-            throw new UnhandledOperationException(_machine, $"Unhandled operation for get/set palette registers op={ConvertUtils.ToHex8(op)}");
+            case VideoFunctions.Palette_SetBorderColor:
+                // Ignore for now.
+                break;
+
+            case VideoFunctions.Palette_SetAllRegisters:
+                SetAllEgaPaletteRegisters();
+                break;
+
+            case VideoFunctions.Palette_ReadSingleDacRegister:
+                // These are commented out because they cause weird issues sometimes.
+                //_state.DH = (byte)((_vgaCard.VgaDac.Palette[_state.BL] >> 18) & 0xCF);
+                //_state.CH = (byte)((_vgaCard.VgaDac.Palette[_state.BL] >> 10) & 0xCF);
+                //_state.CL = (byte)((_vgaCard.VgaDac.Palette[_state.BL] >> 2) & 0xCF);
+                break;
+
+            case VideoFunctions.Palette_SetSingleDacRegister:
+                _vgaCard.VgaDac.SetColor(_state.BL, _state.DH, _state.CH, _state.CL);
+                break;
+
+            case VideoFunctions.Palette_SetDacRegisters:
+                SetDacRegisters();
+                break;
+
+            case VideoFunctions.Palette_ReadDacRegisters:
+                ReadDacRegisters();
+                break;
+
+            case VideoFunctions.Palette_ToggleBlink:
+                // Blinking is not emulated.
+                break;
+
+            case VideoFunctions.Palette_SelectDacColorPage:
+                System.Diagnostics.Debug.WriteLine("Select DAC color page");
+                break;
+
+            default:
+                throw new NotImplementedException(string.Format("Video command 10{0:X2}h not implemented.", _state.AL));
         }
     }
 
-    public byte VideoModeValue {
-        get {
-            if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                _logger.Information("GET VIDEO MODE");
-            }
-            return _memory.GetUint8(BIOS_VIDEO_MODE_ADDRESS);
+    /// <summary>
+    /// Sets DAC color registers to values in emulated RAM.
+    /// </summary>
+    private void SetDacRegisters() {
+        ushort segment = _state.ES;
+        uint offset = (ushort)_state.DX;
+        int start = _state.BX;
+        int count = _state.CX;
+
+        for (int i = start; i < count; i++) {
+            byte r = _memory.GetByte(segment, offset);
+            byte g = _memory.GetByte(segment, offset + 1u);
+            byte b = _memory.GetByte(segment, offset + 2u);
+
+            _vgaCard.VgaDac.SetColor((byte)(start + i), r, g, b);
+
+            offset += 3u;
         }
     }
 
@@ -230,22 +262,20 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
         _vgaCard.TextConsole.ScrollTextUp(_state.CL, _state.CH, _state.DL, _state.DH, _state.AL, foreground, background);
     }
 
-    public void SetBlockOfDacColorRegisters() {
-        ushort firstRegisterToSet = _state.BX;
-        ushort numberOfColorsToSet = _state.CX;
+    /// <summary>
+    /// TODO: Implement this. (CGA support)
+    /// </summary>
+    public void SetColorPaletteOrBackgroudColor() {
         if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _logger.Information("SET BLOCKS OF DAC COLOR REGISTERS. First register is {@FirstRegisterToSet}, setting {@NumberOfColorsToSet} colors, values are from address {@EsDx}", ConvertUtils.ToHex(firstRegisterToSet), numberOfColorsToSet, ConvertUtils.ToSegmentedAddressRepresentation(_state.ES, _state.DX));
+            _logger.Information("SET COLOR PALETTE {@ColorId}, {@ColorValue}", _state.BH, _state.BL);
         }
+        switch (_state.BH) {
+            case VideoFunctions.Video_SetBackgroundColor:
+                break;
 
-        uint colorValuesAddress = MemoryUtils.ToPhysicalAddress(_state.ES, _state.DX);
-        _vgaCard.SetBlockOfDacColorRegisters(firstRegisterToSet, numberOfColorsToSet, colorValuesAddress);
-    }
-
-    public void SetColorPalette() {
-        byte colorId = _state.BH;
-        byte colorValue = _state.BL;
-        if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _logger.Information("SET COLOR PALETTE {@ColorId}, {@ColorValue}", colorId, colorValue);
+            case VideoFunctions.Video_SetPalette:
+                System.Diagnostics.Debug.WriteLine("CGA set palette not implemented.");
+                break;
         }
     }
 
@@ -264,7 +294,7 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
         }
     }
 
-    public void SetVideoMode() {
+    public void SetDisplayMode() {
         byte videoMode = _state.AL;
         SetVideoModeValue(videoMode);
     }
@@ -287,71 +317,99 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
     }
 
     private void FillDispatchTable() {
-        //TODO: Replace and extend values by Functions enums (VgaFunctions, EgaFunctions...) from VideoController.HandleInterrupt
-        _dispatchTable.Add(VgaFunctions.SetDisplayMode, new Callback(VgaFunctions.SetDisplayMode, SetVideoMode));
-        _dispatchTable.Add(VgaFunctions.SetCursorShape, new Callback(VgaFunctions.SetCursorShape, SetCursorType));
-        _dispatchTable.Add(VgaFunctions.SetCursorPosition, new Callback(VgaFunctions.SetCursorPosition, SetCursorPosition));
-        _dispatchTable.Add(VgaFunctions.ScrollUpWindow, new Callback(VgaFunctions.ScrollUpWindow, ScrollPageUp));
-        _dispatchTable.Add(VgaFunctions.Video, new Callback(VgaFunctions.Video, SetColorPalette));
-        _dispatchTable.Add(VgaFunctions.TeletypeOutput, new Callback(VgaFunctions.TeletypeOutput, WriteTextInTeletypeMode));
-        _dispatchTable.Add(VgaFunctions.GetDisplayMode, new Callback(VgaFunctions.GetDisplayMode, GetVideoStatus));
-        _dispatchTable.Add(VgaFunctions.Palette_SetSingleDacRegister, new Callback(VgaFunctions.Palette_SetSingleDacRegister, GetSetPaletteRegisters));
-        // FIXME: Or SetDacRegisters from Aeon code...
-        _dispatchTable.Add(VgaFunctions.Palette_SetDacRegisters, new Callback(VgaFunctions.Palette_SetDacRegisters, VideoSubsystemConfiguration));
-        _dispatchTable.Add(VgaFunctions.Palette_ReadDacRegisters, new Callback(VgaFunctions.Palette_ReadDacRegisters, ReadDacRegisters));
-        _dispatchTable.Add(VgaFunctions.GetDisplayCombinationCode, new Callback(VgaFunctions.GetDisplayCombinationCode, VideoDisplayCombination));
-        // TODO: Fix this, this throws an exception because the key is the same as an existing entry...
-        //_dispatchTable.Add(VgaFunctions.Palette_SetAllRegisters, new Callback(VgaFunctions.Palette_SetAllRegisters, SetAllEgaPaletteRegisters));
-        _dispatchTable.Add(VgaFunctions.GetFunctionalityInfo, new Callback(VgaFunctions.GetFunctionalityInfo, GetFunctionalityInfo));
+        _dispatchTable.Add(VideoFunctions.SetDisplayMode, new Callback(VideoFunctions.SetDisplayMode, SetDisplayMode));
+        _dispatchTable.Add(VideoFunctions.SetCursorShape, new Callback(VideoFunctions.SetCursorShape, SetCursorType));
+        _dispatchTable.Add(VideoFunctions.SetCursorPosition, new Callback(VideoFunctions.SetCursorPosition, SetCursorPosition));
+        _dispatchTable.Add(VideoFunctions.ScrollUpWindow, new Callback(VideoFunctions.ScrollUpWindow, ScrollPageUp));
+        _dispatchTable.Add(VideoFunctions.Video, new Callback(VideoFunctions.Video, SetColorPaletteOrBackgroudColor));
+        _dispatchTable.Add(VideoFunctions.TeletypeOutput, new Callback(VideoFunctions.TeletypeOutput, WriteTextInTeletypeMode));
+        _dispatchTable.Add(VideoFunctions.GetDisplayMode, new Callback(VideoFunctions.GetDisplayMode, GetVideoStatus));
+        _dispatchTable.Add(VideoFunctions.Palette, new Callback(VideoFunctions.Palette, GetSetPaletteRegisters));
+        _dispatchTable.Add(VideoFunctions.EGA, new Callback(VideoFunctions.EGA, GetSetEGARegisters));
+        _dispatchTable.Add(VideoFunctions.GetDisplayCombinationCode, new Callback(VideoFunctions.GetDisplayCombinationCode, GetVideoDisplayCombination));
+        _dispatchTable.Add(VideoFunctions.GetFunctionalityInfo, new Callback(VideoFunctions.GetFunctionalityInfo, GetFunctionalityInfo));
+        _dispatchTable.Add(VideoFunctions.Font, new Callback(VideoFunctions.Font, GetFontInfoOrSwitchTo8060TextMode));
+        _dispatchTable.Add(VideoFunctions.SelectActiveDisplayPage, new Callback(VideoFunctions.SelectActiveDisplayPage, SelectActiveDisplayPage));
+        _dispatchTable.Add(VideoFunctions.WriteCharacterAtCursor, new Callback(VideoFunctions.WriteCharacterAtCursor, WriteCharacterAtCursor));
+        _dispatchTable.Add(VideoFunctions.WriteCharacterAndAttributeAtCursor, new Callback(VideoFunctions.WriteCharacterAndAttributeAtCursor, WriteCharacterAndAttributeAtCursor));
+        _dispatchTable.Add(VideoFunctions.ReadCharacterAndAttributeAtCursor, new Callback(VideoFunctions.ReadCharacterAndAttributeAtCursor, ReadCharacterAndAttributeAtCursor));
     }
 
-    private void VideoDisplayCombination() {
-        byte op = _state.AL;
-        switch (op) {
-            case 0:
-                if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                    _logger.Information("GET VIDEO DISPLAY COMBINATION");
-                }
-                // VGA with analog color display
-                _state.BX = 0x08;
-                break;
-            case 1:
-                if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                    _logger.Information("SET VIDEO DISPLAY COMBINATION");
-                }
-                _vgaCard.SetVideoModeValue(_state.AL);
-                break;
-            default:
-                throw new UnhandledOperationException(_machine,
-                    $"Unhandled operation for videoDisplayCombination op={ConvertUtils.ToHex8(op)}");
+    private void GetVideoDisplayCombination() {
+        if(_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
+            _logger.Information("GET VIDEO DISPLAY COMBINATION");
         }
         _state.AL = 0x1A;
-        _state.AH = 0x00;
+        _state.BX = 0x0008;
     }
 
-    private void VideoSubsystemConfiguration() {
-        byte op = _state.BL;
-        switch (op) {
-            case 0x0:
-                if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                    _logger.Information("UNKNOWN!");
-                }
+    private void ReadCharacterAndAttributeAtCursor() {
+        _state.AX = _vgaCard.TextConsole.GetCharacter(_vgaCard.TextConsole.CursorPosition.X, _vgaCard.TextConsole.CursorPosition.Y);
+    }
+
+    private void WriteCharacterAndAttributeAtCursor() {
+        _vgaCard.TextConsole.Write(_state.AL, (byte)(_state.BL & 0x0F), (byte)(_state.BL >> 4), false);
+    }
+
+    private void WriteCharacterAtCursor() {
+        _vgaCard.TextConsole.Write(_state.AL);
+    }
+
+    private void SelectActiveDisplayPage() {
+        if(this._vgaCard.CurrentMode is null) {
+            return;
+        }
+        this._vgaCard.CurrentMode.ActiveDisplayPage = _state.AL;
+
+    }
+
+    private void GetSetEGARegisters() {
+        switch (_state.BL) {
+            case VideoFunctions.EGA_GetInfo:
+                _state.BX = 0x03; // 256k installed
+                _state.CX = 0x09; // EGA switches set
                 break;
-            case 0x10:
-                if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                    _logger.Information("GET VIDEO CONFIGURATION INFORMATION");
+
+            case VideoFunctions.EGA_SelectVerticalResolution:
+                int verticalTextResolution = 8;
+                if (_state.AL == 0) {
+                    verticalTextResolution = 8;
+                } else if (_state.AL == 1) {
+                    verticalTextResolution = 14;
+                } else {
+                    verticalTextResolution = 16;
                 }
-                // color
-                _state.BH = 0;
-                // 64k of vram
-                _state.BL = 0;
-                // From dosbox source code ...
-                _state.CH = 0;
-                _state.CL = 0x09;
+                _vgaCard.VerticalTextResolution = verticalTextResolution;
+                _state.AL = 0x12; // Success
                 break;
+
+            case VideoFunctions.EGA_PaletteLoading:
+                _vgaCard.DefaultPaletteLoading = _state.AL == 0;
+                break;
+
             default:
-                throw new UnhandledOperationException(_machine,
-                    $"Unhandled operation for videoSubsystemConfiguration op={ConvertUtils.ToHex8(op)}");
+                throw new NotImplementedException($"Video command {VideoFunctions.EGA:X2}, {_state.BL:X2}h not implemented.");
+        }
+    }
+
+    /// <summary>
+    /// TODO: Extend this (Text Mode)
+    /// </summary>
+    private void GetFontInfoOrSwitchTo8060TextMode() {
+        switch (_state.AL) {
+            case VideoFunctions.Font_GetFontInfo:
+                GetFontInfo();
+                break;
+
+            case VideoFunctions.Font_Load8x8:
+                _vgaCard.SwitchTo80x50TextMode();
+                break;
+
+            case VideoFunctions.Font_Load8x16:
+                break;
+
+            default:
+                throw new NotImplementedException($"Video command 11{_state.AL:X2}h not implemented.");
         }
     }
 

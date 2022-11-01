@@ -1,6 +1,6 @@
 ﻿namespace Spice86.Core.Emulator.Video;
 
-public static class VgaFunctions
+public static class VideoFunctions
 {
     public const byte SetDisplayMode = 0x00;
     public const byte SetCursorShape = 0x01;

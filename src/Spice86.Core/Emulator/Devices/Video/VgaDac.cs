@@ -18,8 +18,13 @@ public class VgaDac {
 
     public VgaDac(Machine machine) {
         _machine = machine;
+        Reset();
+    }
 
-        // Initial VGA default palette initialization
+    /// <summary>
+    /// Initial VGA default palette initialization
+    /// </summary>
+    public void Reset() {
         for (int i = 0; i < Palette.Length; i++) {
             Rgb rgb = new() {
                 R = (byte)((i >> 5 & 0x7) * 255 / 7),
@@ -87,4 +92,13 @@ public class VgaDac {
             WriteIndex++;
         }
     }
+
+    /// <summary>
+    /// Sets a color to the specified RGB values.
+    /// </summary>
+    /// <param name="index">Index of color to set.</param>
+    /// <param name="r">Red component.</param>
+    /// <param name="g">Green component.</param>
+    /// <param name="b">Blue component.</param>
+    public void SetColor(byte index, byte r, byte g, byte b) => this.Palette[index] = new() { R = r, G = g, B = b };
 }

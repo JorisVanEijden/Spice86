@@ -42,7 +42,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
     private static readonly long RefreshRate = (long)((1000.0 / 60.0) * Pic.StopwatchTicksPerMillisecond);
     private static readonly long VerticalBlankingTime = RefreshRate / 40;
     private bool attributeDataMode;
-    private int verticalTextResolution = 16;
 
     public bool IsDisposed => _disposed;
 
@@ -234,6 +233,8 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
     }
 
     public VgaDac VgaDac { get; }
+    public int VerticalTextResolution { get; set; } = 16;
+    public bool DefaultPaletteLoading { get; set; }
 
     public byte GetVgaReadIndex() {
         if (_logger.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
@@ -490,7 +491,7 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
 
             case VideoMode10h.ColorText80x25x4:
             case VideoMode10h.MonochromeText80x25x4:
-                mode = new TextMode(80, 25, this.verticalTextResolution, this);
+                mode = new TextMode(80, 25, VerticalTextResolution, this);
                 break;
 
             case VideoMode10h.ColorGraphics320x200x2A:
@@ -532,7 +533,9 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
         this.CurrentMode = mode;
         mode.InitializeMode(this);
         Graphics.WriteRegister(GraphicsRegister.ColorDontCare, 0x0F);
-        _machine.OnVideoModeChanged(EventArgs.Empty);
+        if (DefaultPaletteLoading) {
+            VgaDac.Reset();
+        }
     }
 
     public void UpdateScreen() {
