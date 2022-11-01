@@ -118,7 +118,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
     /// </summary>
     public VideoMode? CurrentMode { get; private set; }
 
-
     public override ushort ReadWord(int port) => this.ReadByte(port);
 
 
@@ -286,7 +285,7 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
                 return GetInputStatus1Value();
 
             default:
-                return 0;
+                return base.ReadByte(port);
         }
     }
 
@@ -360,6 +359,9 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
                 CrtController.WriteRegister(crtRegister, value);
                 if (previousVerticalEnd != CrtController.VerticalDisplayEnd)
                     ChangeVerticalEnd();
+                break;
+            default:
+                base.WriteByte(port, value);
                 break;
         }
     }
@@ -516,13 +518,9 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
                 this.Sequencer.SequencerMemoryMode = SequencerMemoryMode.Chain4;
                 mode = new Vga256(320, 200, this);
                 break;
-
-            default:
-                break;
         }
         if(mode is not null) {
             SetDisplayMode(mode);
-
         }
     }
 
