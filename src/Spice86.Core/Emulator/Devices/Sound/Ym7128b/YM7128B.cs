@@ -7,7 +7,6 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-
 public static partial class YM7128B {
     public const int YM7128B_Float_Min = -1;
     public const int YM7128B_Float_Max = 1;
@@ -282,7 +281,11 @@ public static partial class YM7128B {
 #endif
 });
 
-
+    public static short YM7128B_OversamplerFixed_Process(
+    ref short[] self,
+    short input) {
+        return 0;
+    }
 
     public static string GetVersion() => Version;
 }
