@@ -228,13 +228,13 @@ public static partial class YM7128B {
     Tap(31)   // 100.0 ms
 });
 
-    private static double Kernel(double real) {
+    private static short Kernel(double real) {
         unchecked {
-            return (((short)real) * ((short)YM7128B_ImplementationSpecs.YM7128B_Fixed_Max) & ((short)YM7128B_ImplementationSpecs.YM7128B_Coeff_Mask));
+            return ((short)(((short)real) * ((short)YM7128B_ImplementationSpecs.YM7128B_Fixed_Max) & ((short)YM7128B_ImplementationSpecs.YM7128B_Coeff_Mask)));
         }
     }
 
-    static readonly ReadOnlyCollection<double> YM7128B_OversamplerFixed_Kernel = Array.AsReadOnly(new double[]
+    static readonly ReadOnlyCollection<short> YM7128B_OversamplerFixed_Kernel = Array.AsReadOnly(new short[]
 {
 #if YM7128B_USE_MINPHASE
     // minimum phase
@@ -282,10 +282,48 @@ public static partial class YM7128B {
 });
 
     public static short YM7128B_OversamplerFixed_Process(
-    ref short[] self,
+    ref YM7128B_OversamplerFixed self,
     short input) {
-        return 0;
+        int accum = 0;
+        for (byte i = 0; i < (byte)YM7128B_OversamplerSpecs.YM7128B_Oversampler_Length; ++i) {
+            short sample = self.buffer_[i];
+            self.buffer_[i] = input;
+            input = sample;
+            short kernel = YM7128B_OversamplerFixed_Kernel[i];
+            short oversampled = YM7128B_MulFixed(sample, kernel);
+            accum += oversampled;
+        }
+        short clamped = YM7128B_ClampFixed(accum);
+        unchecked {
+            short output = (short)(clamped & (short)YM7128B_ImplementationSpecs.YM7128B_Signal_Mask);
+            return output;
+        }
     }
+
+    private static short YM7128B_MulFixed(short a, short b) {
+        unchecked {
+            int aa = a & (short)YM7128B_ImplementationSpecs.YM7128B_Operand_Mask;
+            int bb = b & (short)YM7128B_ImplementationSpecs.YM7128B_Operand_Mask;
+            int mm = aa * bb;
+            short x = (short)(mm >> (short)YM7128B_ImplementationSpecs.YM7128B_Fixed_Decimals);
+            short y = (short)(x & (short)YM7128B_ImplementationSpecs.YM7128B_Operand_Mask);
+            return y;
+        }
+    }
+
+    private static short YM7128B_ClampFixed(int signal) {
+        if (signal < (int)YM7128B_ImplementationSpecs.YM7128B_Fixed_Min) {
+            signal = (int)YM7128B_ImplementationSpecs.YM7128B_Fixed_Min;
+        }
+        if (signal > (int)YM7128B_ImplementationSpecs.YM7128B_Fixed_Max) {
+            signal = (int)YM7128B_ImplementationSpecs.YM7128B_Fixed_Max;
+        }
+        unchecked {
+            return (short)((short)signal & (short)YM7128B_ImplementationSpecs.YM7128B_Operand_Mask);
+        }
+    }
+
+
 
     public static string GetVersion() => Version;
 }
