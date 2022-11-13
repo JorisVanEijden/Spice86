@@ -1,4 +1,5 @@
-﻿namespace Spice86.Core.Emulator.Devices.Sound.Ym7128b;
+﻿#define YM7128B_USE_MINPHASE //!< Enables minimum-phase oversampler kernel
+namespace Spice86.Core.Emulator.Devices.Sound.Ym7128b;
 
 using System;
 using System.Collections.Generic;
@@ -7,9 +8,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+
 public static partial class YM7128B {
     public const int YM7128B_Float_Min = -1;
     public const int YM7128B_Float_Max = 1;
+
     private const string Version = "0.1.1";
 
     static readonly ReadOnlyCollection<sbyte> YM7128B_GainDecibel_Table = Array.AsReadOnly(new sbyte[]
@@ -241,7 +244,7 @@ public static partial class YM7128B {
     Kernel(+0.073585247514714749),
     Kernel(+0.269340051166713890),
     Kernel(+0.442535202999738531),
-    KERNEL(+0.350129745841520346),
+    Kernel(+0.350129745841520346),
     Kernel(+0.026195691646307945),
     Kernel(-0.178423532471468610),
     Kernel(-0.081176763571493171),
@@ -286,8 +289,8 @@ public static partial class YM7128B {
     short input) {
         int accum = 0;
         for (byte i = 0; i < (byte)YM7128B_OversamplerSpecs.YM7128B_Oversampler_Length; ++i) {
-            short sample = self.buffer_[i];
-            self.buffer_[i] = input;
+            short sample = self.Buffer[i];
+            self.Buffer[i] = input;
             input = sample;
             short kernel = YM7128B_OversamplerFixed_Kernel[i];
             short oversampled = YM7128B_MulFixed(sample, kernel);
@@ -298,6 +301,88 @@ public static partial class YM7128B {
             short output = (short)(clamped & (short)YM7128B_ImplementationSpecs.YM7128B_Signal_Mask);
             return output;
         }
+    }
+
+    private static double KernelDouble(double real) => real;
+
+    static readonly ReadOnlyCollection<double> YM7128B_OversamplerFloat_Kernel = Array.AsReadOnly(new double[]
+{
+#if YM7128B_USE_MINPHASE
+    // minimum phase
+    KernelDouble(+0.073585247514714749),
+    KernelDouble(+0.269340051166713890),
+    KernelDouble(+0.442535202999738531),
+    KernelDouble(+0.350129745841520346),
+    KernelDouble(+0.026195691646307945),
+    KernelDouble(-0.178423532471468610),
+    KernelDouble(-0.081176763571493171),
+    KernelDouble(+0.083194010466739091),
+    KernelDouble(+0.067960765530891545),
+    KernelDouble(-0.035840063980478287),
+    KernelDouble(-0.044393769145659796),
+    KernelDouble(+0.013156688603347873),
+    KernelDouble(+0.023451305043275420),
+    KernelDouble(-0.004374029821991059),
+    KernelDouble(-0.009480786001493536),
+    KernelDouble(+0.002700502551912207),
+    KernelDouble(+0.003347671274177581),
+    KernelDouble(-0.002391896275498628),
+    KernelDouble(+0.000483958628744376)
+#else
+    // linear phase
+    KernelDouble(+0.005969087803865891),
+    KernelDouble(-0.003826518613910499),
+    KernelDouble(-0.016623943725986926),
+    KernelDouble(+0.007053928712894589),
+    KernelDouble(+0.038895802111020034),
+    KernelDouble(-0.010501507751597486),
+    KernelDouble(-0.089238395139830201),
+    KernelDouble(+0.013171814880420758),
+    KernelDouble(+0.312314472963171053),
+    KernelDouble(+0.485820312497107776),
+    KernelDouble(+0.312314472963171053),
+    KernelDouble(+0.013171814880420758),
+    KernelDouble(-0.089238395139830201),
+    KernelDouble(-0.010501507751597486),
+    KernelDouble(+0.038895802111020034),
+    KernelDouble(+0.007053928712894589),
+    KernelDouble(-0.016623943725986926),
+    KernelDouble(-0.003826518613910499),
+    KernelDouble(+0.005969087803865891)
+#endif
+});
+
+    private static double YM7128B_OversamplerFloat_Process(
+    ref YM7128B_OversamplerFloat self,
+    double input
+    )
+    {
+        double accum = 0;
+
+        for (byte i = 0; i < (byte)YM7128B_OversamplerSpecs.YM7128B_Oversampler_Length; ++i) {
+            double sample = self.Buffer[i];
+            self.Buffer[i] = input;
+            input = sample;
+            double kernel = YM7128B_OversamplerFloat_Kernel[i];
+            double oversampled = YM7128B_MulFloat(sample, kernel);
+            accum += oversampled;
+        }
+
+        double output = YM7128B_ClampFloat(accum);
+        return output;
+    }
+
+    private static double YM7128B_MulFloat(double a, double b) => a * b;
+
+    private static double YM7128B_ClampFloat(double signal)
+    {
+        if (signal < YM7128B_Float_Min) {
+            return YM7128B_Float_Min;
+        }
+        if (signal > YM7128B_Float_Max) {
+            return YM7128B_Float_Max;
+        }
+        return signal;
     }
 
     private static short YM7128B_MulFixed(short a, short b) {
