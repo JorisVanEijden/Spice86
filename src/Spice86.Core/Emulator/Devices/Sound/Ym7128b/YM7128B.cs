@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -285,12 +286,12 @@ public static partial class YM7128B {
 });
 
     public static short YM7128B_OversamplerFixed_Process(
-    ref YM7128B_OversamplerFixed self,
-    short input) {
+        ref YM7128B_OversamplerFixed self,
+        short input) {
         int accum = 0;
         for (byte i = 0; i < (byte)YM7128B_OversamplerSpecs.YM7128B_Oversampler_Length; ++i) {
-            short sample = self.Buffer[i];
-            self.Buffer[i] = input;
+            short sample = self.Buffer_[i];
+            self.Buffer_[i] = input;
             input = sample;
             short kernel = YM7128B_OversamplerFixed_Kernel[i];
             short oversampled = YM7128B_MulFixed(sample, kernel);
@@ -352,10 +353,9 @@ public static partial class YM7128B {
 #endif
 });
 
-    private static double YM7128B_OversamplerFloat_Process(
-    ref YM7128B_OversamplerFloat self,
-    double input
-    )
+    public static double YM7128B_OversamplerFloat_Process(
+        ref YM7128B_OversamplerFloat self,
+        double input)
     {
         double accum = 0;
 
@@ -370,6 +370,43 @@ public static partial class YM7128B {
 
         double output = YM7128B_ClampFloat(accum);
         return output;
+    }
+
+    public static void YM7128B_ChipFixed_Reset(ref YM7128B_ChipFixed self)
+    {
+        for (byte i = 0; i <= (byte)YM7128B_DatasheetSpecs.YM7128B_Address_Max; ++i) {
+            self.Regs_[i] = 0;
+        }
+    }
+
+    public static void YM7128B_ChipFixed_Start(ref YM7128B_ChipFixed self)
+    {
+        self.T0_d_ = 0;
+
+        self.Tail_ = 0;
+
+        for (ushort i = 0; i < (int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length; ++i) {
+            self.Buffer_[i] = 0;
+        }
+
+        for (byte i = 0; i < (int)YM7128B_OutputChannel.YM7128B_OutputChannel_Count; ++i) {
+            YM7128B_OversamplerFixed_Reset(ref self.Oversampler_[i]);
+        }
+    }
+
+    public static void YM7128B_OversamplerFixed_Reset(ref YM7128B_OversamplerFixed self)
+    {
+        YM7128B_OversamplerFixed_Clear(ref self, 0);
+    }
+
+    public static void YM7128B_OversamplerFixed_Clear(
+        ref YM7128B_OversamplerFixed self,
+        short input
+    )
+    {
+        for (byte index = 0; index < (int)YM7128B_OversamplerSpecs.YM7128B_Oversampler_Length; ++index) {
+            self.Buffer_[index] = input;
+        }
     }
 
     private static double YM7128B_MulFloat(double a, double b) => a * b;
@@ -408,7 +445,69 @@ public static partial class YM7128B {
         }
     }
 
+    private static short YM7128B_ClampAddFixed(short a, short b)
+    {
+        int aa = a & (int)YM7128B_ImplementationSpecs.YM7128B_Operand_Mask;
+        int bb = b & (int)YM7128B_ImplementationSpecs.YM7128B_Operand_Mask;
+        int ss = aa + bb;
+        short y = YM7128B_ClampFixed(ss);
+        return y;
+    }
 
+    public static unsafe void YM7128B_ChipFixed_Process(
+        ref YM7128B_ChipFixed self,
+        ref YM7128B_ChipFixed_Process_Data data
+    )
+    {
+        short input = data.Inputs[(int)YM7128B_InputChannel.YM7128B_InputChannel_Mono];
+        short sample = (short)(input & (int)YM7128B_ImplementationSpecs.YM7128B_Signal_Mask);
+
+        ushort t0 = (ushort)(self.Tail_ + self.Taps_[0]);
+        ushort filter_head  = (ushort)((t0 >= (int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length) ? (t0 - (int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length) : t0);
+        short filter_t0  = self.Buffer_[filter_head];
+        short filter_d   = self.T0_d_;
+        self.T0_d_ = filter_t0;
+        short filter_c0  = YM7128B_MulFixed(filter_t0, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_C0]);
+        short filter_c1  = YM7128B_MulFixed(filter_d, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_C1]);
+        short filter_sum = YM7128B_ClampAddFixed(filter_c0, filter_c1);
+        short filter_vc  = YM7128B_MulFixed(filter_sum, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VC]);
+
+        short input_vm  = YM7128B_MulFixed(sample, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VM]);
+        short input_sum = YM7128B_ClampAddFixed(input_vm, filter_vc);
+
+        self.Tail_ = self.Tail_ == 1 ? (short)(self.Tail_ - 1) : (short)(YM7128B_DatasheetSpecs.YM7128B_Buffer_Length - 1);
+        self.Buffer_[self.Tail_] = input_sum;
+
+        for (byte channel = 0; channel < (int)YM7128B_OutputChannel.YM7128B_OutputChannel_Count; ++channel) {
+            byte gb = (byte)((int)YM7128B_Reg.YM7128B_Reg_GL1 + (channel * (int)YM7128B_DatasheetSpecs.YM7128B_Gain_Lane_Count));
+            int accum = 0;
+
+            for (byte tap = 1; tap < (int)YM7128B_DatasheetSpecs.YM7128B_Tap_Count; ++tap) {
+                ushort t = (ushort)(self.Tail_ + self.Taps_[tap]);
+                ushort head = (ushort)((t >=  (int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length) ? (t - (int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length) : t);
+                short buffered = self.Buffer_[head];
+                short g = self.Gains_[gb + tap - 1];
+                short buffered_g = YM7128B_MulFixed(buffered, g);
+                accum += buffered_g;
+            }
+
+            short total = YM7128B_ClampFixed(accum);
+            short v = self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VL + channel];
+            short total_v = YM7128B_MulFixed(total, v);
+
+            YM7128B_OversamplerFixed oversampler = self.Oversampler_[channel];
+            short output = data.Outputs[channel, 0];
+            byte[] outputs = BitConverter.GetBytes(output);
+
+            outputs[0] = (byte)YM7128B_OversamplerFixed_Process(ref oversampler, total_v);
+            if(!BitConverter.IsLittleEndian) {
+                Array.Reverse(outputs);
+            }for (byte j = 1; j < (int)YM7128B_DatasheetSpecs.YM7128B_Oversampling; ++j) {
+                outputs[j] = (byte)YM7128B_OversamplerFixed_Process(ref oversampler, 0);
+            }
+            data.Outputs[channel, 0] = BitConverter.ToInt16(outputs);
+        }
+    }
 
     public static string GetVersion() => Version;
 }
