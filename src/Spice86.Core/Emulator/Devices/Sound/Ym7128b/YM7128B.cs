@@ -4,6 +4,7 @@ namespace Spice86.Core.Emulator.Devices.Sound.Ym7128b;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Diagnostics.Contracts;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -194,6 +195,80 @@ public static partial class YM7128B {
     +0.794328234724281490,  // - 2 dB+
     +1.000000000000000000   // - 0 dB+
 });
+
+    private static short GainShortTable(double real) => (short)(real * (int)YM7128B_ImplementationSpecs.YM7128B_Gain_Max);
+
+    static readonly ReadOnlyCollection<short> YM7128B_GainShort_Table = Array.AsReadOnly(new short[]
+    {
+        // Negative gains
+        (short)-GainShortTable(0.000000000000000000),  // -oo dB-
+        (short)-GainShortTable(0.001000000000000000),  // -60 dB-
+        (short)-GainShortTable(0.001258925411794167),  // -58 dB-
+        (short)-GainShortTable(0.001584893192461114),  // -56 dB-
+        (short)-GainShortTable(0.001995262314968879),  // -54 dB-
+        (short)-GainShortTable(0.002511886431509579),  // -52 dB-
+        (short)-GainShortTable(0.003162277660168379),  // -50 dB-
+        (short)-GainShortTable(0.003981071705534973),  // -48 dB-
+        (short)-GainShortTable(0.005011872336272725),  // -46 dB-
+        (short)-GainShortTable(0.006309573444801930),  // -44 dB-
+        (short)-GainShortTable(0.007943282347242814),  // -42 dB-
+        (short)-GainShortTable(0.010000000000000000),  // -40 dB-
+        (short)-GainShortTable(0.012589254117941675),  // -38 dB-
+        (short)-GainShortTable(0.015848931924611134),  // -36 dB-
+        (short)-GainShortTable(0.019952623149688799),  // -34 dB-
+        (short)-GainShortTable(0.025118864315095794),  // -32 dB-
+        (short)-GainShortTable(0.031622776601683791),  // -30 dB-
+        (short)-GainShortTable(0.039810717055349734),  // -28 dB-
+        (short)-GainShortTable(0.050118723362727220),  // -26 dB-
+        (short)-GainShortTable(0.063095734448019331),  // -24 dB-
+        (short)-GainShortTable(0.079432823472428138),  // -22 dB-
+        (short)-GainShortTable(0.100000000000000006),  // -20 dB-
+        (short)-GainShortTable(0.125892541179416728),  // -18 dB-
+        (short)-GainShortTable(0.158489319246111343),  // -16 dB-
+        (short)-GainShortTable(0.199526231496887974),  // -14 dB-
+        (short)-GainShortTable(0.251188643150958013),  // -12 dB-
+        (short)-GainShortTable(0.316227766016837941),  // -10 dB-
+        (short)-GainShortTable(0.398107170553497203),  // - 8 dB-
+        (short)-GainShortTable(0.501187233627272244),  // - 6 dB-
+        (short)-GainShortTable(0.630957344480193250),  // - 4 dB-
+        (short)-GainShortTable(0.794328234724281490),  // - 2 dB-
+        (short)-GainShortTable(1.000000000000000000),  // - 0 dB-
+
+        // Positive gains
+        (short)+GainShortTable(0.000000000000000000),  // -oo dB(short)+
+        (short)+GainShortTable(0.001000000000000000),  // -60 dB(short)+
+        (short)+GainShortTable(0.001258925411794167),  // -58 dB(short)+
+        (short)+GainShortTable(0.001584893192461114),  // -56 dB(short)+
+        (short)+GainShortTable(0.001995262314968879),  // -54 dB(short)+
+        (short)+GainShortTable(0.002511886431509579),  // -52 dB(short)+
+        (short)+GainShortTable(0.003162277660168379),  // -50 dB(short)+
+        (short)+GainShortTable(0.003981071705534973),  // -48 dB(short)+
+        (short)+GainShortTable(0.005011872336272725),  // -46 dB(short)+
+        (short)+GainShortTable(0.006309573444801930),  // -44 dB(short)+
+        (short)+GainShortTable(0.007943282347242814),  // -42 dB(short)+
+        (short)+GainShortTable(0.010000000000000000),  // -40 dB(short)+
+        (short)+GainShortTable(0.012589254117941675),  // -38 dB(short)+
+        (short)+GainShortTable(0.015848931924611134),  // -36 dB(short)+
+        (short)+GainShortTable(0.019952623149688799),  // -34 dB(short)+
+        (short)+GainShortTable(0.025118864315095794),  // -32 dB(short)+
+        (short)+GainShortTable(0.031622776601683791),  // -30 dB(short)+
+        (short)+GainShortTable(0.039810717055349734),  // -28 dB(short)+
+        (short)+GainShortTable(0.050118723362727220),  // -26 dB(short)+
+        (short)+GainShortTable(0.063095734448019331),  // -24 dB(short)+
+        (short)+GainShortTable(0.079432823472428138),  // -22 dB(short)+
+        (short)+GainShortTable(0.100000000000000006),  // -20 dB(short)+
+        (short)+GainShortTable(0.125892541179416728),  // -18 dB(short)+
+        (short)+GainShortTable(0.158489319246111343),  // -16 dB(short)+
+        (short)+GainShortTable(0.199526231496887974),  // -14 dB(short)+
+        (short)+GainShortTable(0.251188643150958013),  // -12 dB(short)+
+        (short)+GainShortTable(0.316227766016837941),  // -10 dB(short)+
+        (short)+GainShortTable(0.398107170553497203),  // - 8 dB(short)+
+        (short)+GainShortTable(0.501187233627272244),  // - 6 dB(short)+
+        (short)+GainShortTable(0.630957344480193250),  // - 4 dB(short)+
+        (short)+GainShortTable(0.794328234724281490),  // - 2 dB(short)+
+        (short)+GainShortTable(1.000000000000000000)   // - 0 dB(short)+
+    });
+
     private static ushort Tap(int index) => (ushort)(index * ((int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length - 1) / ((int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Count - 1));
 
     static readonly ReadOnlyCollection<ushort> YM7128B_Tap_Table = Array.AsReadOnly(new ushort[]
@@ -506,6 +581,110 @@ public static partial class YM7128B {
                 outputs[j] = (byte)YM7128B_OversamplerFixed_Process(ref oversampler, 0);
             }
             data.Outputs[channel, 0] = BitConverter.ToInt16(outputs);
+        }
+    }
+
+    [Pure]
+    public static byte YM7128B_ChipFloat_Read(
+        ref YM7128B_ChipFloat self,
+        byte address
+    )
+    {
+        if (address < (int)YM7128B_Reg.YM7128B_Reg_C0) {
+            return (byte)(self.Regs_[address] & (int)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+        }
+        else if (address < (int)YM7128B_Reg.YM7128B_Reg_T0) {
+            return (byte)(self.Regs_[address] & (int)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+        }
+        else if (address < (int)YM7128B_Reg.YM7128B_Reg_Count) {
+            return (byte)(self.Regs_[address] & (int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+        }
+        return 0;
+    }
+
+
+    public static ushort YM7128B_RegisterToTap(byte data)
+        {
+            byte i = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+            ushort t = YM7128B_Tap_Table[i];
+            return t;
+        }
+
+    public static uint YM7128B_RegisterToTapIdeal(
+        byte data,
+        uint sample_rate
+    )
+    {
+        byte i = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+        uint t = (uint)((i * (sample_rate / 10)) / ((int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Count - 1));
+        return t;
+    }
+
+    private static short YM7128B_RegisterToGainFixed(byte data)
+    {
+        byte i = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+        short g = YM7128B_GainFixed_Table[i];
+        return g;
+    }
+
+    private static double YM7128B_RegisterToGainFloat(byte data)
+    {
+        byte i = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+        double g = YM7128B_GainFloat_Table[i];
+        return g;
+    }
+
+    private static short YM7128B_RegisterToGainShort(byte data)
+    {
+        byte i = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+        short g = YM7128B_GainShort_Table[i];
+        return g;
+    }
+
+
+    private static short YM7128B_RegisterToCoeffFixed(byte data)
+    {
+        byte r = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+        byte sh = (byte)(YM7128B_ImplementationSpecs.YM7128B_Fixed_Bits - (int)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Bits);
+        short c = (short)(r << sh);
+        return c;
+    }
+
+
+    private static double YM7128B_RegisterToCoeffFloat(byte data)
+    {
+        short k = YM7128B_RegisterToCoeffFixed(data);
+        double c = (double)k * (1 / (double)YM7128B_ImplementationSpecs.YM7128B_Gain_Max);
+        return c;
+    }
+
+
+    private static short YM7128B_RegisterToCoeffShort(byte data)
+    {
+        byte r = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+        byte sh = (int)YM7128B_ImplementationSpecs.YM7128B_Fixed_Bits - (int)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Bits;
+        short c = (short)(r << sh);
+        return c;
+    }
+
+
+    public static void YM7128B_Chip_Write(
+        ref YM7128B_ChipFloat self,
+        byte address,
+        byte data
+    )
+    {
+        if (address < (int)YM7128B_Reg.YM7128B_Reg_C0) {
+            self.Regs_[address] = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+            self.Gains_[address] = YM7128B_RegisterToGainFloat(data);
+        }
+        else if (address < (int)YM7128B_Reg.YM7128B_Reg_T0) {
+            self.Regs_[address] = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+            self.Gains_[address] = YM7128B_RegisterToCoeffFloat(data);
+        }
+        else if (address < (int)YM7128B_Reg.YM7128B_Reg_Count) {
+            self.Regs_[address] = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+            self.Taps_[address - (int)YM7128B_Reg.YM7128B_Reg_T0] = YM7128B_RegisterToTap(data);
         }
     }
 
