@@ -773,5 +773,30 @@ public static partial class YM7128B {
         }
     }
 
+    public static void YM7128B_ChipIdeal_Setup(
+        ref YM7128B_ChipIdeal self,
+        ushort sample_rate
+    ) {
+        if (self.Sample_Rate_ != sample_rate) {
+            self.Sample_Rate_ = sample_rate;
+
+            if (self.Buffer_.Length > 0) {
+                self.Buffer_ = Array.Empty<double>();
+            }
+
+            if (sample_rate >= 10) {
+                int length = (sample_rate / 10) + 1;
+                self.Buffer_ = new double[length];
+
+                for (byte i = 0; i < (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Count; ++i) {
+                    byte data = self.Regs_[i + (byte)YM7128B_Reg.YM7128B_Reg_T0];
+                    self.Taps_[i] = (ushort)YM7128B_RegisterToTapIdeal(data, self.Sample_Rate_);
+                }
+            } else {
+                self.Buffer_ = Array.Empty<double>();
+            }
+        }
+    }
+
     public static string GetVersion() => Version;
 }
