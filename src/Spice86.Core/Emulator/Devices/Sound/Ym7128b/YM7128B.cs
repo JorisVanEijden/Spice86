@@ -481,6 +481,8 @@ public static partial class YM7128B {
 
     private static double YM7128B_MulFloat(double a, double b) => a * b;
 
+    private static double YM7128B_AddFloat(double a, double b) => a + b;
+
     private static double YM7128B_ClampFloat(double signal) {
         if (signal < YM7128B_Float_Min) {
             return YM7128B_Float_Min;
@@ -677,6 +679,97 @@ public static partial class YM7128B {
         // if we have a buffer, then sample rate must be set
         if (self.Sample_Rate_ <= 0) {
             throw new InvalidOperationException("Sample rate must be set");
+        }
+    }
+
+    public static void YM7128B_ChipIdeal_Start(ref YM7128B_ChipIdeal self) {
+        self.T0_d_ = 0;
+
+        self.Tail_ = 0;
+
+        if (self.Buffer_.Length > 0) {
+            for (int i = 0; i < self.Length_; ++i) {
+                self.Buffer_[i] = 0;
+            }
+        }
+    }
+
+    public static void YM7128_ChipIdeal_Process(
+        ref YM7128B_ChipIdeal self,
+        ref YM7128B_ChipIdeal_Process_Data data) {
+        if (self.Buffer_.Length == 0) {
+            return;
+        }
+
+        double input = data.Inputs[(int)YM7128B_InputChannel.YM7128B_InputChannel_Mono];
+        double sample = input;
+
+        int t0 = self.Tail_ + self.Taps_[0];
+        int filter_head = (t0 >= self.Length_) ? (t0 - self.Length_) : t0;
+        double filter_t0 = self.Buffer_[filter_head];
+        double filter_d = self.T0_d_;
+        self.T0_d_ = filter_t0;
+        double filter_c0 = YM7128B_MulFloat(filter_t0, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_C0]);
+        double filter_c1 = YM7128B_MulFloat(filter_d, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_C1]);
+        double filter_sum = YM7128B_AddFloat(filter_c0, filter_c1);
+        double filter_vc = YM7128B_MulFloat(filter_sum, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VC]);
+
+        double input_vm = YM7128B_MulFloat(sample, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VM]);
+        double input_sum = YM7128B_AddFloat(input_vm, filter_vc);
+
+        self.Tail_ = (ushort)(self.Tail_ >= 1 ? (self.Tail_ - 1) : (self.Length_ - 1));
+        self.Buffer_[self.Tail_] = input_sum;
+
+        for (byte channel = 0; channel < (byte)YM7128B_OutputChannel.YM7128B_OutputChannel_Count; ++channel) {
+            byte gb = (byte)((byte)YM7128B_Reg.YM7128B_Reg_GL1 + (channel * (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Lane_Count));
+            double accum = 0;
+
+            for (byte tap = 1; tap < (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Count; ++tap) {
+                int t = self.Tail_ + self.Taps_[tap];
+                int head = (t >= self.Length_) ? (t - self.Length_) : t;
+                double buffered = self.Buffer_[head];
+                double g = self.Gains_[gb + tap - 1];
+                double buffered_g = YM7128B_MulFloat(buffered, g);
+                accum += buffered_g;
+            }
+
+            double total = accum;
+            double v = self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VL + channel];
+            double total_v = YM7128B_MulFloat(total, v);
+            const double og = 1 / (double)YM7128B_DatasheetSpecs.YM7128B_Oversampling;
+            double oversampled = YM7128B_MulFloat(total_v, og);
+            data.Outputs[channel] = oversampled;
+        }
+    }
+
+    public static byte YM7128B_ChipIdeal_Read(
+    ref YM7128B_ChipIdeal self,
+    byte address
+) {
+        if (address < (byte)YM7128B_Reg.YM7128B_Reg_C0) {
+            return (byte)(self.Regs_[address] & (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+        } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_T0) {
+            return (byte)(self.Regs_[address] & (byte)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+        } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_Count) {
+            return (byte)(self.Regs_[address] & (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+        }
+        return 0;
+    }
+
+    public static void YM7128B_ChipIdeal_Write(
+        ref YM7128B_ChipIdeal self,
+        byte address,
+        byte data
+    ) {
+        if (address < (byte)YM7128B_Reg.YM7128B_Reg_C0) {
+            self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+            self.Gains_[address] = YM7128B_RegisterToGainFloat(data);
+        } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_T0) {
+            self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+            self.Gains_[address] = YM7128B_RegisterToCoeffFloat(data);
+        } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_Count) {
+            self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+            self.Taps_[address - (byte)YM7128B_Reg.YM7128B_Reg_T0] = (ushort)YM7128B_RegisterToTapIdeal(data, self.Sample_Rate_);
         }
     }
 
