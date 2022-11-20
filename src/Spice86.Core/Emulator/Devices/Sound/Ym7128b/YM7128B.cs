@@ -596,12 +596,12 @@ public static partial class YM7128B {
         return t;
     }
 
-    public static uint YM7128B_RegisterToTapIdeal(
+    public static ushort YM7128B_RegisterToTapIdeal(
         byte data,
         uint sample_rate
     ) {
         byte i = (byte)(data & (int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
-        uint t = (uint)((i * (sample_rate / 10)) / ((int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Count - 1));
+        ushort t = (ushort)((i * (sample_rate / 10)) / ((int)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Count - 1));
         return t;
     }
 
@@ -743,9 +743,8 @@ public static partial class YM7128B {
     }
 
     public static byte YM7128B_ChipIdeal_Read(
-    ref YM7128B_ChipIdeal self,
-    byte address
-) {
+        ref YM7128B_ChipIdeal self,
+        byte address) {
         if (address < (byte)YM7128B_Reg.YM7128B_Reg_C0) {
             return (byte)(self.Regs_[address] & (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
         } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_T0) {
@@ -759,8 +758,7 @@ public static partial class YM7128B {
     public static void YM7128B_ChipIdeal_Write(
         ref YM7128B_ChipIdeal self,
         byte address,
-        byte data
-    ) {
+        byte data) {
         if (address < (byte)YM7128B_Reg.YM7128B_Reg_C0) {
             self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
             self.Gains_[address] = YM7128B_RegisterToGainFloat(data);
@@ -775,8 +773,7 @@ public static partial class YM7128B {
 
     public static void YM7128B_ChipIdeal_Setup(
         ref YM7128B_ChipIdeal self,
-        ushort sample_rate
-    ) {
+        ushort sample_rate) {
         if (self.Sample_Rate_ != sample_rate) {
             self.Sample_Rate_ = sample_rate;
 
@@ -794,6 +791,130 @@ public static partial class YM7128B {
                 }
             } else {
                 self.Buffer_ = Array.Empty<double>();
+            }
+        }
+    }
+
+    public static void YM7128B_ChipShort_Reset(ref YM7128B_ChipShort self) {
+        for (byte i = 0; i <= (byte)YM7128B_DatasheetSpecs.YM7128B_Address_Max; ++i) {
+            self.Regs_[i] = 0;
+        }
+    }
+
+    public static void YM7128B_ChipShort_Start(ref YM7128B_ChipShort self) {
+        self.T0_d_ = 0;
+
+        self.Tail_ = 0;
+
+        if (self.Buffer_.Length > 0) {
+            for (byte i = 0; i < self.Length_; ++i) {
+                self.Buffer_[i] = 0;
+            }
+        }
+    }
+
+    private static short YM7128B_MulShort(short a, short b) => (short)(a * b);
+
+    private static short YM7128B_ClampAddShort(short a, short b) {
+        int aa = a;
+        int bb = b;
+        int ss = aa + bb;
+        short y = YM7128B_ClampShort(ss);
+        return y;
+    }
+
+    private static short YM7128B_ClampShort(int signal) {
+        if (signal < (int)YM7128B_ImplementationSpecs.YM7128B_Fixed_Min) {
+            return short.MinValue + 1;
+        } else if (signal > short.MaxValue) {
+            return (short)short.MaxValue;
+        }
+        return (short)signal;
+    }
+
+    public static void YM7128B_ChipShort_Process(
+        ref YM7128B_ChipShort self,
+        YM7128B_ChipShort_Process_Data data) {
+        short input = data.Inputs[(int)YM7128B_InputChannel.YM7128B_InputChannel_Mono];
+        short sample = input;
+
+        ushort t0 = (ushort)(self.Tail_ + self.Taps_[0]);
+        ushort filter_head = (ushort)(t0 >= self.Length_ ? (t0 - self.Length_) : t0);
+        short filter_t0 = self.Buffer_[filter_head];
+        short filter_d = self.T0_d_;
+        self.T0_d_ = filter_t0;
+        short filter_c0 = YM7128B_MulShort(filter_t0, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_C0]);
+        short filter_c1 = YM7128B_MulShort(filter_d, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_C1]);
+        short filter_sum = YM7128B_ClampAddShort(filter_c0, filter_c1);
+        short filter_vc = YM7128B_MulShort(filter_sum, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VC]);
+
+        short input_vm = YM7128B_MulShort(sample, self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VM]);
+        short input_sum = YM7128B_ClampAddShort(input_vm, filter_vc);
+
+        self.Tail_ = (ushort)(self.Tail_ > 0 ? (self.Tail_ - 1) : (self.Length_ - 1));
+        self.Buffer_[self.Tail_] = input_sum;
+
+        for (byte channel = 0; channel < (byte)YM7128B_OutputChannel.YM7128B_OutputChannel_Count; ++channel) {
+            byte gb = (byte)((byte)YM7128B_Reg.YM7128B_Reg_GL1 + (channel * (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Lane_Count));
+            short accum = 0;
+
+            for (byte tap = 1; tap < (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Count; ++tap) {
+                ushort t = (ushort)(self.Tail_ + self.Taps_[tap]);
+                ushort head = (ushort)((t >= self.Length_) ? (t - self.Length_) : t);
+                short buffered = self.Buffer_[head];
+                short g = self.Gains_[gb + tap - 1];
+                short buffered_g = YM7128B_MulShort(buffered, g);
+                accum += buffered_g;
+            }
+
+            short total = accum;
+            short v = self.Gains_[(int)YM7128B_Reg.YM7128B_Reg_VL + channel];
+            short total_v = YM7128B_MulShort(total, v);
+            short oversampled = (short)(total_v / (short)YM7128B_DatasheetSpecs.YM7128B_Oversampling);
+            data.Outputs[channel] = oversampled;
+        }
+    }
+
+    public static void YM7128B_ChipShort_Write(
+        ref YM7128B_ChipShort self,
+        byte address,
+        byte data) {
+        if (address < (byte)YM7128B_Reg.YM7128B_Reg_C0) {
+            self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Gain_Data_Mask);
+            short gain = YM7128B_RegisterToGainShort(data);
+            self.Gains_[address] = gain;
+        } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_T0) {
+            self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Coeff_Value_Mask);
+            short coeff = YM7128B_RegisterToCoeffShort(data);
+            self.Gains_[address] = coeff;
+        } else if (address < (byte)YM7128B_Reg.YM7128B_Reg_Count) {
+            self.Regs_[address] = (byte)(data & (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Value_Mask);
+            ushort tap = (ushort)YM7128B_RegisterToTapIdeal(data, self.Sample_Rate_);
+            self.Taps_[address - (byte)YM7128B_Reg.YM7128B_Reg_T0] = tap;
+        }
+    }
+
+    public static void YM7128B_ChipShort_Setup(
+        ref YM7128B_ChipShort self,
+        ushort sample_rate
+    ) {
+        if (self.Sample_Rate_ != sample_rate) {
+            self.Sample_Rate_ = sample_rate;
+
+            if (self.Length_ > 0) {
+                self.Buffer_ = Array.Empty<short>();
+            }
+
+            if (sample_rate >= 10) {
+                int length = (sample_rate / 10) + 1;
+                self.Buffer_ = new short[length];
+
+                for (byte i = 0; i < (byte)YM7128B_DatasheetSpecs.YM7128B_Tap_Count; ++i) {
+                    byte data = self.Regs_[i + (byte)YM7128B_Reg.YM7128B_Reg_T0];
+                    self.Taps_[i] = YM7128B_RegisterToTapIdeal(data, self.Sample_Rate_);
+                }
+            } else {
+                self.Buffer_ = Array.Empty<short>();
             }
         }
     }
