@@ -2,14 +2,8 @@
 namespace Spice86.Core.Emulator.Devices.Sound.Ym7128b;
 
 using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics.Contracts;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
-
 
 public static partial class YM7128B {
     public const int YM7128B_Float_Min = -1;
