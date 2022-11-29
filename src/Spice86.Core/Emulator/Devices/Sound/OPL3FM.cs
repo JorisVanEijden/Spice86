@@ -12,16 +12,16 @@ using System;
 /// <summary>
 /// Virtual device which emulates OPL3 FM sound.
 /// </summary>
-public sealed class OPL3FM : DefaultIOPortHandler, IDisposable {
+public class OPL3FM : DefaultIOPortHandler, IDisposable {
     private const byte Timer1Mask = 0xC0;
     private const byte Timer2Mask = 0xA0;
 
     private readonly AudioPlayer? _audioPlayer;
-    private readonly FmSynthesizer? _synth;
+    protected readonly FmSynthesizer? _synth;
     private int _currentAddress;
     private volatile bool _endThread;
     private readonly Thread _playbackThread;
-    private bool _initialized;
+    protected bool _initialized;
     private bool _paused;
     private byte _statusByte;
     private byte _timer1Data;
@@ -163,7 +163,7 @@ public sealed class OPL3FM : DefaultIOPortHandler, IDisposable {
         }
     }
 
-    private void StartPlaybackThread() {
+    protected void StartPlaybackThread() {
         if(!_endThread) {
             _playbackThread.Start();
             _initialized = true;
