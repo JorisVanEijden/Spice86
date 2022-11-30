@@ -148,7 +148,7 @@ public class Machine : IDisposable {
         Register(Joystick);
         PcSpeaker = new PcSpeaker(this, serviceProvider.GetService<ILoggerService>(), configuration);
         Register(PcSpeaker);
-        AdlibGold = new AdlibGold(this, configuration, 22050);
+        AdlibGold = new AdlibGold(this, configuration, 48000);
         OPL3FM = new OPL3FM(this, configuration);
         SoundBlaster = new SoundBlaster(this, configuration);
         if (configuration.SynthMode == "g") {
