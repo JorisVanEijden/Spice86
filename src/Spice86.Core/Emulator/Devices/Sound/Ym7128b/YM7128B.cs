@@ -732,7 +732,7 @@ public static partial class YM7128B {
             double total_v = YM7128B_MulFloat(total, v);
             const double og = 1 / (double)YM7128B_DatasheetSpecs.YM7128B_Oversampling;
             double oversampled = YM7128B_MulFloat(total_v, og);
-            data.Outputs[channel] = oversampled;
+            data.Outputs[channel] = (float)oversampled;
         }
     }
 

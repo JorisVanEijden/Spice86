@@ -201,6 +201,8 @@ public class Machine : IDisposable {
         _dmaThread = new Thread(DmaLoop) {
             Name = "DMAThread"
         };
+        OPL3FM.StartPlayback("SoundBlasterOPL3FMAudio");
+        AdlibGold.StartPlayback("AdlibGoldOPL3FMAudio");
     }
 
     /// <summary>
