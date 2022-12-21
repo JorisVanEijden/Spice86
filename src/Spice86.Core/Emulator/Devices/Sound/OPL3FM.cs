@@ -15,25 +15,30 @@ public class OPL3FM : DefaultIOPortHandler, IDisposable {
     private const byte Timer1Mask = 0xC0;
     private const byte Timer2Mask = 0xA0;
 
+    private const double MillisInSecond = 1000d;
+
     protected readonly AudioPlayer? _audioPlayer;
     protected readonly FmSynthesizer? _synth;
     private int _currentAddress;
     protected volatile bool _endThread;
-    private readonly Thread _playbackThread;
+    protected readonly Thread _playbackThread;
     protected bool _initialized;
     private bool _paused;
-    private byte _statusByte;
+    protected byte _statusByte;
     private byte _timer1Data;
     private byte _timer2Data;
     private byte _timerControlByte;
 
     private bool _disposed = false;
 
+    protected readonly double MsPerFrame = 0d;
+
     public OPL3FM(Machine machine, Configuration configuration) : base(machine, configuration) {
         _audioPlayer = Audio.CreatePlayer(48000, 2048);
         if (_audioPlayer is not null) {
             _synth = new FmSynthesizer(_audioPlayer.Format.SampleRate);
         }
+        MsPerFrame = MillisInSecond / 48000;
         _playbackThread = new Thread(RnderWaveFormOnPlaybackThread);
     }
 
@@ -158,9 +163,8 @@ public class OPL3FM : DefaultIOPortHandler, IDisposable {
 
     public void StartPlayback(string threadName) {
         if (!_initialized) {
-            StartPlaybackThread();
+            StartPlaybackThread(threadName);
         }
-
     }
 
     protected void StartPlaybackThread(string threadName = "") {

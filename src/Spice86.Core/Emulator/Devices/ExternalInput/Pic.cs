@@ -41,6 +41,7 @@ public class Pic {
     private bool _polled = false;
     private bool _interruptOngoing = false;
     private bool _autoEoi = false;
+
     private SelectedReadRegister _selectedReadRegister = SelectedReadRegister.InterruptRequestRegister;
 
     public Pic(Machine machine, ILoggerService loggerService, bool master) {

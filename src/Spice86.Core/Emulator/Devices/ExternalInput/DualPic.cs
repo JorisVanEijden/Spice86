@@ -33,6 +33,14 @@ public class DualPic : DefaultIOPortHandler {
         Initialize();
     }
 
+    private long EmulatorStartTimestamp { get; init; } = System.Diagnostics.Stopwatch.GetTimestamp();
+
+    public TimeSpan Ticks { get; private set; }
+
+    public void RefreshTicks() {
+        Ticks = System.Diagnostics.Stopwatch.GetElapsedTime(EmulatorStartTimestamp);
+    }
+
     public void Initialize() {
         // Send default initialization commands to the pics
         // ICW1
