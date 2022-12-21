@@ -149,6 +149,8 @@ public sealed class AdlibGold : OPL3FM {
             return;
         }
 
+        _fifo.EnsureCapacity(1024);
+
         while (_lastRenderedMs < now.Milliseconds) {
             _lastRenderedMs += MsPerFrame;
             _fifo.Enqueue(RenderFrame());
