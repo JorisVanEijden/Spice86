@@ -1,11 +1,11 @@
 namespace Spice86.Core.Emulator.Devices.Sound.Ym7128b;
 
-public struct YM7128B_ChipIdeal
+public struct ChipIdeal
 {
-    public YM7128B_ChipIdeal() {
-        Regs = new byte[(int)YM7128B_Reg.YM7128B_Reg_Count];
-        Gains = new double[(int)YM7128B_Reg.YM7128B_Reg_T0];
-        Taps = new ushort[(int)YM7128B_DatasheetSpecs.YM7128B_Tap_Count];
+    public ChipIdeal() {
+        Regs = new byte[(int)Reg.Count];
+        Gains = new double[(int)Reg.T0];
+        Taps = new ushort[(int)DatasheetSpecs.TapCount];
         Buffer = Array.Empty<double>();
     }
 

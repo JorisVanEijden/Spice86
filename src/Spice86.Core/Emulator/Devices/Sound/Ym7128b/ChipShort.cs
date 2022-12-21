@@ -1,10 +1,10 @@
 namespace Spice86.Core.Emulator.Devices.Sound.Ym7128b;
-public struct YM7128B_ChipShort {
-    public YM7128B_ChipShort() {
-        Regs = new byte[(int)YM7128B_Reg.YM7128B_Reg_Count];
-        Gains = new short[(int)YM7128B_DatasheetSpecs.YM7128B_Tap_Count];
-        Taps = new ushort[(int)YM7128B_DatasheetSpecs.YM7128B_Tap_Count];
-        Buffer = new short[(int)YM7128B_DatasheetSpecs.YM7128B_Buffer_Length];
+public struct ChipShort {
+    public ChipShort() {
+        Regs = new byte[(int)Reg.Count];
+        Gains = new short[(int)DatasheetSpecs.TapCount];
+        Taps = new ushort[(int)DatasheetSpecs.TapCount];
+        Buffer = new short[(int)DatasheetSpecs.BufferLength];
     }
 
     public byte[] Regs { get; set; }
