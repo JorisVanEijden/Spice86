@@ -202,7 +202,7 @@ public class Machine : IDisposable {
             Name = "DMAThread"
         };
         OPL3FM.StartPlayback("SoundBlasterOPL3FMAudio");
-        AdlibGold.StartPlayback("AdlibGoldOPL3FMAudio");
+        //AdlibGold.StartPlayback("AdlibGoldOPL3FMAudio");
     }
 
     /// <summary>
