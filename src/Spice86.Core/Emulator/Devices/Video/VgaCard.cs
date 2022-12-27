@@ -189,6 +189,7 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
         if (_disposed) {
             return;
         }
+        Console.WriteLine(nameof(SetVramDWord) + DateTimeOffset.UtcNow);
         this.CurrentMode?.SetVramDWord(offset, value);
     }
 
@@ -399,20 +400,6 @@ public class VgaCard : DefaultIOPortHandler, IDisposable {
             _logger.Information("PALETTE WRITE {@Value}", value);
         }
         VgaDac.WriteColor(VgaDac.From6bitColorTo8bit(value));
-    }
-
-    public void SetBlockOfDacColorRegisters(int firstRegister, int numberOfColors, uint colorValuesAddress) {
-        Rgb[] rgbs = VgaDac.Palette;
-        for (int i = 0; i < numberOfColors; i++) {
-            int registerToSet = firstRegister + i;
-            Rgb rgb = rgbs[registerToSet];
-            byte r = VgaDac.From6bitColorTo8bit(_memory.GetUint8(colorValuesAddress++));
-            byte g = VgaDac.From6bitColorTo8bit(_memory.GetUint8(colorValuesAddress++));
-            byte b = VgaDac.From6bitColorTo8bit(_memory.GetUint8(colorValuesAddress++));
-            rgb.R = r;
-            rgb.G = g;
-            rgb.B = b;
-        }
     }
 
     public void SetVgaReadIndex(int value) {

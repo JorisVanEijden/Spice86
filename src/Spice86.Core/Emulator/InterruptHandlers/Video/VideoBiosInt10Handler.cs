@@ -223,9 +223,9 @@ public class VideoBiosInt10Handler : InterruptHandler, IDisposable {
         int count = _state.CX;
 
         for (int i = start; i < count; i++) {
-            byte r = _memory.GetByte(segment, offset);
-            byte g = _memory.GetByte(segment, offset + 1u);
-            byte b = _memory.GetByte(segment, offset + 2u);
+            byte r = VgaDac.From6bitColorTo8bit(_memory.GetByte(segment, offset));
+            byte g = VgaDac.From6bitColorTo8bit(_memory.GetByte(segment, offset + 1u));
+            byte b = VgaDac.From6bitColorTo8bit(_memory.GetByte(segment, offset + 2u));
 
             _vgaCard.VgaDac.SetColor((byte)(start + i), r, g, b);
 
