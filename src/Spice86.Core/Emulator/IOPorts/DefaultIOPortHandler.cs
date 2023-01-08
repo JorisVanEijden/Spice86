@@ -1,7 +1,6 @@
 ﻿namespace Spice86.Core.Emulator.IOPorts;
 
 using Spice86.Core.Emulator.Memory;
-using Spice86.Core.Emulator;
 using Spice86.Core.Emulator.CPU;
 using Spice86.Core.Emulator.VM;
 
