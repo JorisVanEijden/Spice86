@@ -7,6 +7,7 @@ using Serilog;
 using Spice86.Core.Backend.Audio;
 using Spice86.Core.Backend.Audio.Iir;
 using Spice86.Core.CLI;
+using Spice86.Core.DI;
 using Spice86.Core.Emulator.Devices.Sound.Ym7128b;
 using Spice86.Core.Emulator.IOPorts;
 using Spice86.Core.Emulator.Sound;
@@ -32,9 +33,12 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
 
     private readonly Thread _playbackThread;
 
-    public AdlibGold(Machine machine, Configuration configuration, ushort sampleRate) : base(machine, configuration) {
+    private ILogger _logger;
+
+    public AdlibGold(Machine machine, ILogger logger, Configuration configuration, ushort sampleRate) : base(machine, configuration) {
         _sampleRate = sampleRate;
-        _stereoProcessor = new(_sampleRate);
+        _logger = logger;
+        _stereoProcessor = new(_sampleRate, new ServiceProvider().GetLoggerForContext<AdlibGold>());
         _surroundProcessor = new(_sampleRate);
         _audioPlayer = Audio.CreatePlayer(48000, 2048);
         _playbackThread = new Thread(RnderWaveFormOnPlaybackThread);
@@ -196,10 +200,11 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
 
         private const int ShelfFilter0DbValue = 6;
 
-        private readonly ILogger _logger = Spice86.Logging.Serilogger.Logger.ForContext<StereoProcessor>();
+        private readonly ILogger _logger;
 
-        public StereoProcessor(ushort sampleRate) {
+        public StereoProcessor(ushort sampleRate, ILogger logger) {
             _sampleRate = sampleRate;
+            _logger = logger;
             if (_sampleRate <= 0) {
                 throw new IndexOutOfRangeException(nameof(sampleRate));
             }
