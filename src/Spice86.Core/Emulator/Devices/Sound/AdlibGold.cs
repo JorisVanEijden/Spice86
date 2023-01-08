@@ -13,9 +13,6 @@ using Spice86.Core.Emulator.IOPorts;
 using Spice86.Core.Emulator.Sound;
 using Spice86.Core.Emulator.VM;
 
-using System;
-using System.Collections.Generic;
-
 /// <summary>
 /// Adlib Gold implementation, translated from DOSBox Staging code
 /// </summary>
@@ -67,14 +64,6 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
             }
             _disposed = true;
         }
-    }
-
-    private enum StereoProcessorControlReg {
-        VolumeLeft,
-        VolumeRight,
-        Bass,
-        Treble,
-        SwitchFunctions,
     }
 
     public override void InitPortHandlers(IOPortDispatcher ioPortDispatcher) {
@@ -164,22 +153,6 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
         SoundB2 = 5,
         Stereo1 = 6,
         Stereo2 = 7,
-    }
-
-    private struct AudioFrame {
-        public AudioFrame(float left, float right) {
-            Left = left;
-            Right = right;
-        }
-
-        public float Left { get; set; }
-
-        public float Right { get; set; }
-
-        public float this[int i] {
-            get { return int.IsEvenInteger(i) ? Left : Right; }
-            set { if (int.IsEvenInteger(i)) { Left = value; } else { Right = value; } }
-        }
     }
 
     /// <summary>
