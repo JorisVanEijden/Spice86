@@ -2,7 +2,6 @@
 
 /// <summary>
 /// RGB representation of a color.
-/// TODO: Verify that the uint operator is correct.
 /// </summary>
 public class Rgb {
     public byte R { get; set; }
