@@ -124,6 +124,8 @@ public class Machine : IDisposable {
 
     public VideoBiosInt10Handler Video { get; }
 
+    public SortedList<uint, IDeviceCallbackProvider> DeviceCallbackProviders { get; } = new();
+
     public Machine(ProgramExecutor programExecutor, IGui? gui, IKeyScanCodeConverter? keyScanCodeConverter, CounterConfigurator counterConfigurator, ExecutionFlowRecorder executionFlowRecorder, Configuration configuration, bool recordData) {
         _programExecutor = programExecutor;
         Configuration = configuration;
@@ -222,18 +224,7 @@ public class Machine : IDisposable {
         };
         EndInitialization();
         VgaCard.SwitchTo80x50TextMode();
-        //TODO: The only IDeviceCallbackProvider is the ExtendedMemoryManager. For now...
-        // Fix this once there is more than one.
-        ExtendedMemoryManager virtualDevice = this.xmm;
-        if (virtualDevice is IDeviceCallbackProvider callbackProvider) {
-            const int id = 1;
-            callbackProvider.CallbackAddress = this.Memory.AddCallbackHandler((byte)id, callbackProvider.IsHookable);
-            Span<byte> machineCode = stackalloc byte[3];
-            machineCode[0] = 0x0F;
-            machineCode[1] = 0x56;
-            machineCode[2] = id;
-            callbackProvider.SetRaiseCallbackInstruction(machineCode);
-        }
+        Register((IDeviceCallbackProvider)xmm);
     }
 
     public VideoMode? VideoMode { get; internal set; }
@@ -302,6 +293,18 @@ public class Machine : IDisposable {
 
     public string PeekReturn(CallType returnCallType) {
         return ToString(Cpu.FunctionHandlerInUse.PeekReturnAddressOnMachineStack(returnCallType));
+    }
+
+    public void Register(IDeviceCallbackProvider callbackProvider) {
+        int id = DeviceCallbackProviders.Count;
+        callbackProvider.CallbackAddress = this.Memory.AddCallbackHandler((byte)id, callbackProvider.IsHookable);
+        DeviceCallbackProviders.Add((uint)id, callbackProvider);
+
+        Span<byte> machineCode = stackalloc byte[3];
+        machineCode[0] = 0x0F;
+        machineCode[1] = 0x56;
+        machineCode[2] = (byte)id;
+        callbackProvider.SetRaiseCallbackInstruction(machineCode);
     }
 
     public void Register(IIOPortHandler ioPortHandler) {
