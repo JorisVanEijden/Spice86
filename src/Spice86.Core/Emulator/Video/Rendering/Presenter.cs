@@ -93,8 +93,10 @@ public abstract class Presenter : IDisposable {
         }
         else
         {
-            this.DrawFrame(this.internalBuffer!.PixelBuffer);
-            this.scaler.Apply(this.internalBuffer.PixelBuffer, destination);
+            if(this.internalBuffer is not null) {
+                this.DrawFrame(this.internalBuffer.PixelBuffer);
+                this.scaler.Apply(this.internalBuffer.PixelBuffer, destination);
+            }
         }
     }
     protected uint ToNativeColorFormat(Rgb rgb) => rgb.ToArgb();

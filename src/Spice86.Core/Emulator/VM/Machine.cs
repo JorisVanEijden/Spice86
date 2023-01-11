@@ -49,8 +49,6 @@ public class Machine : IDisposable {
     private readonly ExtendedMemoryManager xmm;
 
     internal ExtendedMemoryManager ExtendedMemory => this.xmm;
-
-
     private bool _disposed;
 
     public DosMemoryManager DosMemoryManager => DosInt21Handler.DosMemoryManager;
@@ -225,6 +223,8 @@ public class Machine : IDisposable {
         EndInitialization();
         VgaCard.SwitchTo80x50TextMode();
         Register((IDeviceCallbackProvider)xmm);
+        Register((ICallback)xmm);
+        Register(emm);
     }
 
     public VideoMode? VideoMode { get; internal set; }
