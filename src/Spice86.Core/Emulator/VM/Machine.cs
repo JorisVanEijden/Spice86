@@ -224,9 +224,8 @@ public class Machine : IDisposable {
         VgaCard.SwitchTo80x50TextMode();
         Register((IDeviceCallbackProvider)xmm);
         Register((ICallback)xmm);
-            Register((IDeviceCallbackProvider)emm);
-            Register((ICallback)emm);
-        }
+        Register(emm);
+    }
 
     public void Register(IDeviceCallbackProvider callbackProvider) {
         int id = DeviceCallbackProviders.Count;
