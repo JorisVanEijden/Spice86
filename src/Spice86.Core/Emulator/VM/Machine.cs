@@ -122,6 +122,8 @@ public class Machine : IDisposable {
 
     public Configuration Configuration { get; }
 
+    public VideoBiosInt10Handler Video { get; }
+
     public Machine(ProgramExecutor programExecutor, IGui? gui, IKeyScanCodeConverter? keyScanCodeConverter, CounterConfigurator counterConfigurator, ExecutionFlowRecorder executionFlowRecorder, Configuration configuration, bool recordData) {
         _programExecutor = programExecutor;
         Configuration = configuration;
@@ -130,19 +132,14 @@ public class Machine : IDisposable {
         var serviceProvider = new ServiceProvider();
 
         // A full 8MB of addressable memory :)
-        Memory = new Memory(this, (uint)Configuration.Kilobytes < 0x800000 ? 0x800000 : (uint)Configuration.Kilobytes);
+        Memory = new Memory(this, (uint)Configuration.Kilobytes < 8192 ? 8192 : (uint)Configuration.Kilobytes);
         if(gui is not null) {
-
             Memory.InitializeFonts();
             Memory.InitializeBiosData();
         }
-        
-        
         Cpu = new Cpu(this, serviceProvider.GetLoggerForContext<Cpu>(), executionFlowRecorder, recordData);
-        //Video = new VideoHandler(this);
         xmm = new(this);
         emm = new(this);
-        //Memory.Video = this.Video;
         Memory.Ems = emm;
 
         // Breakpoints
@@ -162,6 +159,8 @@ public class Machine : IDisposable {
         Register(DualPic);
         VgaCard = new VgaCard(this, serviceProvider.GetLoggerForContext<VgaCard>(), gui, configuration);
         Register(VgaCard);
+        Video = new VideoBiosInt10Handler(this, serviceProvider.GetLoggerForContext<VideoBiosInt10Handler>(), VgaCard);
+        Memory.Video = this.Video;
         Timer = new Timer(this, serviceProvider.GetLoggerForContext<Timer>(), DualPic, VgaCard, counterConfigurator, configuration);
         Register(Timer);
         Keyboard = new Keyboard(this, serviceProvider.GetLoggerForContext<Keyboard>(), gui, keyScanCodeConverter, configuration);
@@ -227,12 +226,12 @@ public class Machine : IDisposable {
         // Fix this once there is more than one.
         ExtendedMemoryManager virtualDevice = this.xmm;
         if (virtualDevice is IDeviceCallbackProvider callbackProvider) {
-            int id = 1;
+            const int id = 1;
             callbackProvider.CallbackAddress = this.Memory.AddCallbackHandler((byte)id, callbackProvider.IsHookable);
             Span<byte> machineCode = stackalloc byte[3];
             machineCode[0] = 0x0F;
             machineCode[1] = 0x56;
-            machineCode[2] = (byte)id;
+            machineCode[2] = id;
             callbackProvider.SetRaiseCallbackInstruction(machineCode);
         }
     }

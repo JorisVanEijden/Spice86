@@ -72,20 +72,19 @@ public class Memory {
 
     private readonly Machine _machine;
 
-    public Memory(Machine machine, uint memorySize) {
-        if (memorySize < ConvMemorySize) {
+    public Memory(Machine machine, uint sizeInKb) {
+        uint sizeInBytes = sizeInKb * 1024;
+        if (sizeInBytes < ConvMemorySize) {
             throw new ArgumentException("Memory size must be at least 1 MB.");
         }
-        
-        this.MemorySize = (int)memorySize;
+        Ram = new byte[sizeInBytes];
+        this.MemorySize = (int)sizeInBytes;
         unsafe {
             fixed(byte* ramPtr = this.Ram)
             {
                 this.RawView = ramPtr;
             }
         }
-        this.MemorySize = (int)memorySize * 10000;
-        
         // Reserve room for the real-mode interrupt table.
         this.Reserve(0x0000, 256 * 4);
 
@@ -94,11 +93,9 @@ public class Memory {
 
         Bios = new Bios(this);
         _machine = machine;
-        Ram = new byte[memorySize * 1024];
         UInt8 = new(this);
         UInt16 = new(this);
         UInt32 = new(this);
-        
         //Reserve base memory
         uint length = this._metaAllocator.GetLargestFreeBlockSize();
         ushort segment = this._metaAllocator.Allocate(0x0000, (int)length);
