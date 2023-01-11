@@ -227,6 +227,37 @@ public class Machine : IDisposable {
         Register(emm);
     }
 
+    public void Register(IDeviceCallbackProvider callbackProvider) {
+        int id = DeviceCallbackProviders.Count;
+        callbackProvider.CallbackAddress = this.Memory.AddCallbackHandler((byte)id, callbackProvider.IsHookable);
+        DeviceCallbackProviders.Add((uint)id, callbackProvider);
+
+        Span<byte> machineCode = stackalloc byte[3];
+        machineCode[0] = 0x0F;
+        machineCode[1] = 0x56;
+        machineCode[2] = (byte)id;
+        callbackProvider.SetRaiseCallbackInstruction(machineCode);
+    }
+
+    public void Register(IIOPortHandler ioPortHandler) {
+        ioPortHandler.InitPortHandlers(IoPortDispatcher);
+
+        if (ioPortHandler is not IDmaDevice8 dmaDevice) {
+            return;
+        }
+
+        if (dmaDevice.Channel < 0 || dmaDevice.Channel >= DmaController.Channels.Count) {
+            throw new ArgumentException("Invalid DMA channel on DMA device.");
+        }
+
+        DmaController.Channels[dmaDevice.Channel].Device = dmaDevice;
+        _dmaDeviceChannels.Add(DmaController.Channels[dmaDevice.Channel]);
+    }
+
+    public void Register(ICallback callback) {
+        CallbackHandler.AddCallback(callback);
+    }
+
     public VideoMode? VideoMode { get; internal set; }
 
     /// <summary>
@@ -293,37 +324,6 @@ public class Machine : IDisposable {
 
     public string PeekReturn(CallType returnCallType) {
         return ToString(Cpu.FunctionHandlerInUse.PeekReturnAddressOnMachineStack(returnCallType));
-    }
-
-    public void Register(IDeviceCallbackProvider callbackProvider) {
-        int id = DeviceCallbackProviders.Count;
-        callbackProvider.CallbackAddress = this.Memory.AddCallbackHandler((byte)id, callbackProvider.IsHookable);
-        DeviceCallbackProviders.Add((uint)id, callbackProvider);
-
-        Span<byte> machineCode = stackalloc byte[3];
-        machineCode[0] = 0x0F;
-        machineCode[1] = 0x56;
-        machineCode[2] = (byte)id;
-        callbackProvider.SetRaiseCallbackInstruction(machineCode);
-    }
-
-    public void Register(IIOPortHandler ioPortHandler) {
-        ioPortHandler.InitPortHandlers(IoPortDispatcher);
-
-        if (ioPortHandler is not IDmaDevice8 dmaDevice) {
-            return;
-        }
-
-        if (dmaDevice.Channel < 0 || dmaDevice.Channel >= DmaController.Channels.Count) {
-            throw new ArgumentException("Invalid DMA channel on DMA device.");
-        }
-
-        DmaController.Channels[dmaDevice.Channel].Device = dmaDevice;
-        _dmaDeviceChannels.Add(DmaController.Channels[dmaDevice.Channel]);
-    }
-
-    public void Register(ICallback callback) {
-        CallbackHandler.AddCallback(callback);
     }
 
     public void Run() {
