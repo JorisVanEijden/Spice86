@@ -384,6 +384,10 @@ public sealed partial class MainWindowViewModel : ObservableObject, IGui, IDispo
     [ObservableProperty]
     private bool _showVideo = true;
 
+    private void OnVideoModeChanged(object? sender, EventArgs e) {
+        _videoBuffers.RemoveAll(_videoBuffers.Where(x => !x.IsPrimaryDisplay));
+    }
+
     private void MachineThread() {
         try {
             if(!_disposed) {
@@ -392,6 +396,8 @@ public sealed partial class MainWindowViewModel : ObservableObject, IGui, IDispo
             _programExecutor = new ProgramExecutor(
                 new ServiceProvider().GetLoggerForContext<ProgramExecutor>(),
                 this, new AvaloniaKeyScanCodeConverter(), _configuration);
+            _programExecutor.Machine.VideoModeChanged -= OnVideoModeChanged;
+            _programExecutor.Machine.VideoModeChanged += OnVideoModeChanged;
             TimeMultiplier = _configuration.TimeMultiplier;
             _programExecutor.Run();
             Dispatcher.UIThread.Post(() => ShowVideo = false);
