@@ -216,7 +216,8 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
         }
 
         if (videoMode.VideoModeType == VideoModeType.Text) {
-            return new TextPresenter(videoMode);
+            TextPresenter textPresenter = new(videoMode);
+            return textPresenter;
         } else {
             Presenter? presenter = videoMode.BitsPerPixel switch {
                 2 => new GraphicsPresenter2(videoMode),
@@ -231,6 +232,7 @@ public sealed partial class VideoBufferViewModel : ObservableObject, IVideoBuffe
                 presenter.TargetHeight = this.Height;
                 presenter.TargetWidth = this.Width;
             }
+            this.Address = (uint)videoMode.StartOffset;
             return presenter;
         }
     }
