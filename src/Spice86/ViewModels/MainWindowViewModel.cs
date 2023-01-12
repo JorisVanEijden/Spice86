@@ -385,7 +385,11 @@ public sealed partial class MainWindowViewModel : ObservableObject, IGui, IDispo
     private bool _showVideo = true;
 
     private void OnVideoModeChanged(object? sender, EventArgs e) {
-        _videoBuffers.RemoveAll(_videoBuffers.Where(x => !x.IsPrimaryDisplay));
+        IEnumerable<VideoBufferViewModel> videoBuffers = _videoBuffers.Where(x => !x.IsPrimaryDisplay);
+        foreach (VideoBufferViewModel videoBuffer in videoBuffers) {
+            videoBuffer.Dispose();
+        }
+        _videoBuffers.RemoveAll(videoBuffers);
     }
 
     private void MachineThread() {
