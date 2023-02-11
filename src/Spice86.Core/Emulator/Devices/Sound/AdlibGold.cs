@@ -1,4 +1,6 @@
-﻿namespace Spice86.Core.Emulator.Devices.Sound;
+﻿using Spice86.Logging;
+
+namespace Spice86.Core.Emulator.Devices.Sound;
 
 using Dunet;
 
@@ -30,12 +32,12 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
 
     private readonly Thread _playbackThread;
 
-    private ILogger _logger;
+    private ILoggerService _loggerService;
 
-    public AdlibGold(Machine machine, ILogger logger, Configuration configuration, ushort sampleRate) : base(machine, configuration) {
+    public AdlibGold(Machine machine, ILoggerService loggerService, Configuration configuration, ushort sampleRate) : base(machine, configuration) {
         _sampleRate = sampleRate;
-        _logger = logger;
-        _stereoProcessor = new(_sampleRate, new ServiceProvider().GetLoggerForContext<AdlibGold>());
+        _loggerService = loggerService;
+        _stereoProcessor = new(_sampleRate, new ServiceProvider().GetService<ILoggerService>());
         _surroundProcessor = new(_sampleRate);
         _audioPlayer = Audio.CreatePlayer(48000, 2048);
         _playbackThread = new Thread(RnderWaveFormOnPlaybackThread);
@@ -173,11 +175,11 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
 
         private const int ShelfFilter0DbValue = 6;
 
-        private readonly ILogger _logger;
+        private readonly ILoggerService _loggerService;
 
-        public StereoProcessor(ushort sampleRate, ILogger logger) {
+        public StereoProcessor(ushort sampleRate, ILoggerService loggerService) {
             _sampleRate = sampleRate;
-            _logger = logger;
+            _loggerService = loggerService;
             if (_sampleRate <= 0) {
                 throw new IndexOutOfRangeException(nameof(sampleRate));
             }
@@ -232,7 +234,7 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
                 case StereoProcessorControlReg.VolumeLeft: {
                         var value = data & volumeControlMask;
                         _gain.Left = CalcVolumeGain(value);
-                        _logger.Debug("ADLIBGOLD: Stereo: Final left volume set to {Left}.2fdB {Value}",
+                        _loggerService.Debug("ADLIBGOLD: Stereo: Final left volume set to {Left}.2fdB {Value}",
                             _gain.Left,
                             value);
                     }
@@ -241,7 +243,7 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
                 case StereoProcessorControlReg.VolumeRight: {
                         var value = data & volumeControlMask;
                         _gain.Right = CalcVolumeGain(value);
-                        _logger.Debug("ADLIBGOLD: Stereo: Final right volume set to {Right}.2fdB {Value}",
+                        _loggerService.Debug("ADLIBGOLD: Stereo: Final right volume set to {Right}.2fdB {Value}",
                             _gain.Right,
                             value);
                     }
@@ -252,7 +254,7 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
                         var gainDb = CalcFilterGainDb(value);
                         SetLowShelfGain(gainDb);
 
-                        _logger.Debug("ADLIBGOLD: Stereo: Bass gain set to {GainDb}.2fdB {Value}",
+                        _loggerService.Debug("ADLIBGOLD: Stereo: Bass gain set to {GainDb}.2fdB {Value}",
                             gainDb,
                             value);
                     }
@@ -266,7 +268,7 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
                         var gainDb = CalcFilterGainDb(value + extraTreble);
                         SetHighShelfGain(gainDb);
 
-                        _logger.Debug("ADLIBGOLD: Stereo: Treble gain set to {GainDb}.2fdB {Value}",
+                        _loggerService.Debug("ADLIBGOLD: Stereo: Treble gain set to {GainDb}.2fdB {Value}",
                             gainDb,
                             value);
                     }
@@ -276,7 +278,7 @@ public sealed class AdlibGold : DefaultIOPortHandler, IDisposable  {
                         var sf = new StereoProcessorSwitchFunctions(data);
                         _sourceSelector = (StereoProcessorSourceSelector)sf.SourceSelector;
                         _stereoMode = (StereoProcessorStereoMode)sf.StereoMode;
-                        _logger.Debug("ADLIBGOLD: Stereo: Source selector set to {SourceSelector}, stereo mode set to {StereoMode}",
+                        _loggerService.Debug("ADLIBGOLD: Stereo: Source selector set to {SourceSelector}, stereo mode set to {StereoMode}",
                             (int)(_sourceSelector),
                             (int)(_stereoMode));
                     }
