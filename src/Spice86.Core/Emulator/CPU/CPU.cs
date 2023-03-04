@@ -152,7 +152,7 @@ public class Cpu {
 
     public void NearRet(int numberOfBytesToPop) {
         FunctionHandlerInUse.Ret(CallType.NEAR);
-        _internalIp = Stack.Pop16();
+        _internalIp = (ushort)_instructions16Or32.PopFromStack();
         ExecutionFlowRecorder.RegisterReturn(State.CS, State.IP, State.CS, _internalIp);
         State.SP = (ushort)(numberOfBytesToPop + State.SP);
         // Set it here for overriden code calling this
@@ -969,14 +969,9 @@ public class Cpu {
             case 0xE7:
                 _instructions16Or32.OutImm8();
                 break;
-            case 0xE8: {
-                    // CALL NEAR
-                    ushort nextInstruction = (ushort)(_internalIp + 2);
-                    short offset = (short)NextUint16();
-                    ushort callAddress = (ushort)(nextInstruction + offset);
-                    NearCall(nextInstruction, callAddress);
-                    break;
-                }
+            case 0xE8:
+                _instructions16Or32.CallNear(_internalIp);
+                break;
             case 0xE9: {
                     short offset = (short)NextUint16();
                     JumpNear((ushort)(_internalIp + offset));
@@ -1324,8 +1319,8 @@ public class Cpu {
     public void NearCallWithReturnIpNextInstruction(ushort callIP) {
         NearCall(_internalIp, callIP);
     }
-    private void NearCall(ushort returnIP, ushort callIP) {
-        Stack.Push16(returnIP);
+    public void NearCall(ushort returnIP, ushort callIP) {
+        _instructions16Or32.PushOnStack(returnIP);
         HandleCall(CallType.NEAR, State.CS, returnIP, State.CS, callIP);
     }
 

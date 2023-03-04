@@ -563,4 +563,27 @@ public class Instructions32 : Instructions16Or32 {
         ModRM.Read();
         ModRM.R32 = (uint)(sbyte)ModRM.GetRm8();
     }
+
+    public override void CallNear(ushort currentAddress) {
+        // CALL NEAR
+        uint nextInstruction = (uint)(currentAddress + 4);
+        short offset = (short)Cpu.NextUint32();
+        ushort callAddress = (ushort)(nextInstruction + offset);
+        Cpu.NearCall((ushort)nextInstruction, callAddress);
+    }
+
+    public override void PushOnStack(uint value) {
+        Stack.Push32(value);
+    }
+    
+    public override uint PopFromStack() {
+        return Stack.Pop32();
+    }
+
+    protected override void Grp5RmCallNear() {
+        // NEAR CALL
+        uint callAddress = ModRM.GetRm32();
+        Cpu.NearCallWithReturnIpNextInstruction((ushort)callAddress);
+    }
+
 }

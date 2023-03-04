@@ -98,11 +98,7 @@ public abstract class Instructions16Or32 : Instructions {
         }
     }
 
-    private void Grp5RmCallNear() {
-        // NEAR CALL
-        ushort callAddress = ModRM.GetRm16();
-        Cpu.NearCallWithReturnIpNextInstruction(callAddress);
-    }
+    protected abstract void Grp5RmCallNear();
 
     private void Grp5RmCallFar() {
         // FAR CALL
@@ -179,4 +175,10 @@ public abstract class Instructions16Or32 : Instructions {
     public abstract void MovzxByte();
     
     public abstract void MovsxByte();
+
+    public abstract void CallNear(ushort currentAddress);
+
+    public abstract void PushOnStack(uint value);
+    
+    public abstract uint PopFromStack();
 }
