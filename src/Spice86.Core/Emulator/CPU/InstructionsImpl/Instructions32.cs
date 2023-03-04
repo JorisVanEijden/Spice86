@@ -579,7 +579,13 @@ public class Instructions32 : Instructions16Or32 {
     public override uint PopFromStack() {
         return Stack.Pop32();
     }
-
+    
+    public override void FarCall() {
+        uint targetIp = Cpu.NextUint32();
+        ushort targetCs = Cpu.NextUint16();
+        Cpu.FarCall(targetCs, (ushort)targetIp);
+    }
+    
     protected override void Grp5RmCallNear() {
         // NEAR CALL
         uint callAddress = ModRM.GetRm32();

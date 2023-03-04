@@ -115,7 +115,7 @@ public class Cpu {
 
     public void FarRet(ushort numberOfBytesToPop) {
         FunctionHandlerInUse.Ret(CallType.FAR);
-        _internalIp = Stack.Pop16();
+        _internalIp = (ushort)_instructions16Or32.PopFromStack();
         ushort cs = Stack.Pop16();
         ExecutionFlowRecorder.RegisterReturn(State.CS, State.IP, cs, _internalIp);
         State.CS = cs;
@@ -686,12 +686,9 @@ public class Cpu {
             case 0x99:
                 _instructions16Or32.Cwd();
                 break;
-            case 0x9A: {
-                ushort ip = NextUint16();
-                ushort cs = NextUint16();
-                FarCall(State.CS, _internalIp, cs, ip);
+            case 0x9A:
+                _instructions16Or32.FarCall();
                 break;
-            }
             // Do nothing, this is to wait for the FPU which is not implemented
             case 0x9B:
                 // WAIT FPU
@@ -1158,14 +1155,10 @@ public class Cpu {
         State.CarryFlag = finalCarryFlag;
     }
 
-    public void FarCallWithReturnIpNextInstruction(ushort targetCS, ushort targetIP) {
-        FarCall(State.CS, _internalIp, targetCS, targetIP);
-    }
-
-    private void FarCall(ushort returnCS, ushort returnIP, ushort targetCS, ushort targetIP) {
-        Stack.Push16(returnCS);
-        Stack.Push16(returnIP);
-        HandleCall(CallType.FAR, returnCS, returnIP, targetCS, targetIP);
+    public void FarCall(ushort targetCS, ushort targetIP) {
+        _instructions16Or32.PushOnStack(State.CS);
+        _instructions16Or32.PushOnStack(_internalIp);
+        HandleCall(CallType.FAR, State.CS, _internalIp, targetCS, targetIP);
     }
 
     private uint InternalIpPhysicalAddress => MemoryUtils.ToPhysicalAddress(State.CS, _internalIp);

@@ -584,6 +584,12 @@ public class Instructions16 : Instructions16Or32 {
         return Stack.Pop16();
     }
 
+    public override void FarCall() {
+        ushort targetIp = Cpu.NextUint16();
+        ushort targetCs = Cpu.NextUint16();
+        Cpu.FarCall(targetCs, targetIp);
+    }
+
     protected override void Grp5RmCallNear() {
         // NEAR CALL
         ushort callAddress = ModRM.GetRm16();

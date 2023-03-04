@@ -110,7 +110,7 @@ public abstract class Instructions16Or32 : Instructions {
         StaticAddressesRecorder.SetCurrentAddressOperation(ValueOperation.READ, OperandSize.Dword32Ptr);
         ushort ip = Memory.GetUint16(ipAddress.Value);
         ushort cs = Memory.GetUint16(ipAddress.Value + 2);
-        Cpu.FarCallWithReturnIpNextInstruction(cs, ip);
+        Cpu.FarCall(cs, ip);
     }
 
     private void Grp5RmJumpNear() {
@@ -181,4 +181,6 @@ public abstract class Instructions16Or32 : Instructions {
     public abstract void PushOnStack(uint value);
     
     public abstract uint PopFromStack();
+
+    public abstract void FarCall();
 }
