@@ -595,5 +595,18 @@ public class Instructions16 : Instructions16Or32 {
         ushort callAddress = ModRM.GetRm16();
         Cpu.NearCallWithReturnIpNextInstruction(callAddress);
     }
+
+    protected override void Grp5RmCallFar() {
+        // FAR CALL
+        uint? ipAddress = ModRM.MemoryAddress;
+        if (ipAddress is null) {
+            return;
+        }
+
+        StaticAddressesRecorder.SetCurrentAddressOperation(ValueOperation.READ, OperandSize.Dword32Ptr);
+        ushort ip = Memory.GetUint16(ipAddress.Value);
+        ushort cs = Memory.GetUint16(ipAddress.Value + 2);
+        Cpu.FarCall(cs, ip);
+    }
     
 }

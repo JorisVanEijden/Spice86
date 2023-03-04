@@ -100,18 +100,7 @@ public abstract class Instructions16Or32 : Instructions {
 
     protected abstract void Grp5RmCallNear();
 
-    private void Grp5RmCallFar() {
-        // FAR CALL
-        uint? ipAddress = ModRM.MemoryAddress;
-        if (ipAddress is null) {
-            return;
-        }
-
-        StaticAddressesRecorder.SetCurrentAddressOperation(ValueOperation.READ, OperandSize.Dword32Ptr);
-        ushort ip = Memory.GetUint16(ipAddress.Value);
-        ushort cs = Memory.GetUint16(ipAddress.Value + 2);
-        Cpu.FarCall(cs, ip);
-    }
+    protected abstract void Grp5RmCallFar();
 
     private void Grp5RmJumpNear() {
         ushort ip = ModRM.GetRm16();

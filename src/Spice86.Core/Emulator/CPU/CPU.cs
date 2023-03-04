@@ -116,7 +116,7 @@ public class Cpu {
     public void FarRet(ushort numberOfBytesToPop) {
         FunctionHandlerInUse.Ret(CallType.FAR);
         _internalIp = (ushort)_instructions16Or32.PopFromStack();
-        ushort cs = Stack.Pop16();
+        ushort cs = (ushort)_instructions16Or32.PopFromStack();
         ExecutionFlowRecorder.RegisterReturn(State.CS, State.IP, cs, _internalIp);
         State.CS = cs;
         State.SP = (ushort)(numberOfBytesToPop + State.SP);
@@ -142,9 +142,9 @@ public class Cpu {
 
     public void InterruptRet() {
         FunctionHandlerInUse.Ret(CallType.INTERRUPT);
-        _internalIp = Stack.Pop16();
+        _internalIp = (ushort)_instructions16Or32.PopFromStack();
         State.CS = Stack.Pop16();
-        State.Flags.FlagRegister = Stack.Pop16();
+        State.Flags.FlagRegister = _instructions16Or32.PopFromStack();
         FunctionHandlerInUse = FunctionHandler;
         // Set it here for overriden code calling this
         State.IP = _internalIp;
