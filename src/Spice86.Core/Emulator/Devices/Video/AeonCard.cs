@@ -793,6 +793,7 @@ public class AeonCard : DefaultIOPortHandler, IVideoCard, IAeonVgaCard, IDisposa
         var mode = new Unchained256(320, 200, this);
         CrtController.Offset = 320 / 8;
         CurrentMode = mode;
+        _presenter = GetPresenter();
         VideoModeChanged?.Invoke(this, new VideoModeChangedEventArgs(false));
     }
 
