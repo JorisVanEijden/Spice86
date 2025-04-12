@@ -37,6 +37,18 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     [ObservableProperty]
     private bool? _willJump;
 
+    [ObservableProperty]
+    private bool _isGapLine;
+
+    [ObservableProperty]
+    private bool _isSegmentStartLine;
+
+    [ObservableProperty]
+    private string _gapDescription = string.Empty;
+
+    /// <summary>
+    /// Creates a regular instruction line for the debugger view.
+    /// </summary>
     public DebuggerLineViewModel(EnrichedInstruction instruction, BreakpointsViewModel? breakpointsViewModel = null) {
         _info = instruction.Instruction;
         _breakpointsViewModel = breakpointsViewModel;
@@ -49,6 +61,61 @@ public partial class DebuggerLineViewModel : ViewModelBase {
 
         // We expect there to be at most 1 execution breakpoint per line, so we use SingleOrDefault.
         Breakpoint = instruction.Breakpoints.SingleOrDefault(breakpoint => breakpoint.Type == BreakPointType.CPU_EXECUTION_ADDRESS);
+
+        // Generate the formatted disassembly text
+        GenerateFormattedDisassembly();
+    }
+
+    /// <summary>
+    /// Creates a gap line for the debugger view.
+    /// </summary>
+    /// <param name="currentLine"></param>
+    /// <param name="nextLine"></param>
+    public DebuggerLineViewModel(DebuggerLineViewModel currentLine, DebuggerLineViewModel nextLine) {
+        _info = new Instruction();
+        ByteString = string.Empty;
+        Function = null;
+        SegmentedAddress = currentLine.SegmentedAddress;
+        Address = SegmentedAddress.Linear;
+        NextAddress = Address;
+        IsGapLine = true;
+
+        // Calculate the gap size
+        long gapSize = nextLine.Address - currentLine.Address;
+        GapDescription = $"--- Gap of {gapSize} (0x{gapSize:X}) bytes ---";
+
+        // Create custom formatted instruction for the gap line
+        _customFormattedInstruction = [
+            new FormattedTextSegment {
+                Text = GapDescription,
+                Kind = FormatterTextKind.Text
+            }
+        ];
+
+        GenerateFormattedDisassembly();
+    }
+
+    /// <summary>
+    /// Creates a segment start line for the debugger view.
+    /// </summary>
+    /// <param name="segmentAddress">The segmented address at the start of the segment</param>
+    public DebuggerLineViewModel(SegmentedAddress segmentAddress) {
+        _info = new Instruction();
+        ByteString = string.Empty;
+        Function = null;
+        SegmentedAddress = segmentAddress;
+        Address = segmentAddress.Linear;
+        NextAddress = Address;
+        IsSegmentStartLine = true;
+        GapDescription = $"--- Start of segment {segmentAddress.Segment:X4} ---";
+
+        // Create custom formatted instruction for the segment start line
+        _customFormattedInstruction = [
+            new FormattedTextSegment {
+                Text = GapDescription,
+                Kind = FormatterTextKind.Text
+            }
+        ];
 
         // Generate the formatted disassembly text
         GenerateFormattedDisassembly();
@@ -108,6 +175,10 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     }
 
     public override string ToString() {
+        if (IsGapLine || IsSegmentStartLine) {
+            return GapDescription;
+        }
+
         return $"{SegmentedAddress} {Disassembly} [{ByteString}]";
     }
 }

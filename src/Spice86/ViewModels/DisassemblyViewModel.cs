@@ -37,15 +37,21 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
     private readonly ILoggerService _logger;
     private readonly IMemory _memory;
     private readonly IMessenger _messenger;
+
     private readonly IPauseHandler _pauseHandler;
+
     // Flag to track if we're doing a batch update
     private bool _isBatchUpdating;
+
     // Flag to prevent recursive updates
     private bool _isUpdatingHighlighting;
+
     // Flag to track if the sorted view needs to be updated
     private bool _sortedViewNeedsUpdate = true;
+
     // Track the previous instruction address for highlighting updates
     private SegmentedAddress? _previousInstructionAddress;
+
     // Flag to track if the view is active/visible
     private bool _isActive;
 
@@ -130,12 +136,12 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
                 return;
             }
             _isActive = value;
-            
+
             if (_isActive) {
                 // Subscribe to pause events when the view becomes active
                 _pauseHandler.Paused += OnPaused;
                 _pauseHandler.Resumed += OnResumed;
-                
+
                 // If already paused, update the view
                 if (_pauseHandler.IsPaused) {
                     OnPaused();
@@ -167,9 +173,35 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
                 _sortedDebuggerLinesView.Clear();
             }
 
-            // Add all items in sorted order
-            foreach (KeyValuePair<uint, DebuggerLineViewModel> item in DebuggerLines.OrderBy(kvp => kvp.Key)) {
-                _sortedDebuggerLinesView.Add(item.Value);
+            // Get all addresses sorted
+            var sortedAddresses = DebuggerLines.Keys.OrderBy(k => k).ToList();
+
+            // Add all items with gap detection
+            for (int i = 0; i < sortedAddresses.Count; i++) {
+                uint currentAddress = sortedAddresses[i];
+                DebuggerLineViewModel currentLine = DebuggerLines[currentAddress];
+
+                // Check if this is the start of a new segment (offset is 0)
+                if (currentLine.SegmentedAddress.Offset == 0) {
+                    // Add a segment start indicator
+                    var segmentStartLine = new DebuggerLineViewModel(currentLine.SegmentedAddress);
+                    _sortedDebuggerLinesView.Add(segmentStartLine);
+                }
+
+                // Add the current line
+                _sortedDebuggerLinesView.Add(currentLine);
+
+                // Check if we need to add a gap line after this instruction
+                if (i < sortedAddresses.Count - 1) {
+                    uint nextAddress = sortedAddresses[i + 1];
+                    if (nextAddress != currentLine.NextAddress) {
+                        // Create a gap line
+                        DebuggerLineViewModel nextLine = DebuggerLines[nextAddress];
+                        var gapLine = new DebuggerLineViewModel(currentLine, nextLine);
+                        // Add the gap line to the sorted view
+                        _sortedDebuggerLinesView.Add(gapLine);
+                    }
+                }
             }
 
             _sortedViewNeedsUpdate = false;
@@ -188,7 +220,7 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
                 _currentInstructionAddress = value;
                 OnPropertyChanged();
                 UpdateHeader(value);
-                
+
                 if (_isActive) {
                     UpdateCpuInstructionHighlighting();
                 }
@@ -224,7 +256,7 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
     };
 
     /// <summary>
-    ///     Clean up event handlers when the view model is disposed.
+    /// Clean up event handlers when the view model is disposed.
     /// </summary>
     public void Dispose() {
         // Make sure to unsubscribe from all events
@@ -247,7 +279,7 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         try {
             _isBatchUpdating = true;
 
-            // Add all new items at once
+            // Add all new instructions to the debugger lines
             foreach (KeyValuePair<uint, EnrichedInstruction> item in enrichedInstructions) {
                 DebuggerLines[item.Key] = new DebuggerLineViewModel(item.Value, _breakpointsViewModel);
             }
@@ -263,7 +295,9 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         }
     }
 
-    // Override OnPropertyChanged to track when the dictionary changes
+    /// <summary>
+    ///     Override OnPropertyChanged to track when the dictionary changes
+    /// </summary>
     protected override void OnPropertyChanged(PropertyChangedEventArgs e) {
         base.OnPropertyChanged(e);
 
@@ -300,7 +334,7 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         if (!_isActive) {
             return;
         }
-        
+
         // Ensure we're on the UI thread
         if (!Dispatcher.UIThread.CheckAccess()) {
             Dispatcher.UIThread.Post(OnPaused);

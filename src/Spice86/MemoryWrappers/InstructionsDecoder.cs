@@ -11,7 +11,6 @@ using Spice86.ViewModels;
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 /// <summary>
 /// Decoder for x86 instructions that provides formatted output for disassembly views.
