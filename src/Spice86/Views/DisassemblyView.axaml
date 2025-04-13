@@ -129,14 +129,14 @@
                     
                     <!-- Style for segment start lines -->
                     <Style Selector="ContentControl.segment-start-line > Border">
-                        <Setter Property="BorderBrush" Value="#AA5555" />
-                        <Setter Property="BorderThickness" Value="0,1,0,0" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource DisassemblyLineSeparatorSegmentStartBrush}" />
+                        <Setter Property="BorderThickness" Value="0,2,0,0" />
                     </Style>
                     
                     <!-- Style for gap lines -->
                     <Style Selector="ContentControl.gap-line > Border">
-                        <Setter Property="BorderBrush" Value="#AA5555" />
-                        <Setter Property="BorderThickness" Value="0,0,0,1" />
+                        <Setter Property="BorderBrush" Value="{DynamicResource DisassemblyLineSeparatorAddressGapBrush}" />
+                        <Setter Property="BorderThickness" Value="0,0,0,2" />
                     </Style>
                     
                     <!-- Default style for breakpoint indicators (no breakpoint) -->
@@ -190,7 +190,7 @@
                                         behaviors:InstructionPointerBehavior.IsEnabled="True"
                                         Classes.segment-start-line="{Binding IsSegmentStartLine}"
                                         Classes.gap-line="{Binding IsGapLine}"
-                                        Classes.breakpoint-enabled="{Binding Breakpoint.IsEnabled}"
+                                        Classes.breakpoint-enabled="{Binding Breakpoint.IsEnabled, FallbackValue=false}"
                                         Classes.breakpoint-has-breakpoint="{Binding Breakpoint, Converter={x:Static ObjectConverters.IsNotNull}}">
                             <ContentControl.Styles>
                                 <Style Selector="SelectableTextBlock">
