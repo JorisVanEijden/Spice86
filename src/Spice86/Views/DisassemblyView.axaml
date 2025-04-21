@@ -204,7 +204,7 @@
 
                             <!-- Border for content -->
                             <Border Margin="0">
-                                <Grid ColumnDefinitions="Auto, Auto, *,4*,2*" Margin="0">
+                                <Grid ColumnDefinitions="Auto, Auto, *,4*,Auto,2*" Margin="0">
                                     <!-- Breakpoint indicator -->
                                     <Border Grid.Column="0"
                                             Width="16"
@@ -242,8 +242,13 @@
                                                          Inlines="{Binding DisassemblySegments, Converter={StaticResource FormattedTextSegmentsConverter}}"
                                                          Margin="12,0,0,0" />
 
-                                    <!-- Function Name -->
+                                    <!-- Next Execution Address -->
                                     <SelectableTextBlock Grid.Column="4"
+                                                         Text="{Binding NextExecutionAddress}"
+                                                         IsVisible="{Binding WillJump}"/>
+
+                                    <!-- Function Name -->
+                                    <SelectableTextBlock Grid.Column="5"
                                                          Text="{Binding Function.Name, FallbackValue=''}"
                                                          Foreground="#9CDCFE"
                                                          Margin="12,0,0,0" />

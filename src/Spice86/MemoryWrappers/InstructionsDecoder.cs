@@ -108,9 +108,10 @@ internal class InstructionsDecoder(IMemory memory, IDictionary<SegmentedAddress,
     /// Creates a standard enriched instruction from a decoded instruction at the given address.
     /// </summary>
     private EnrichedInstruction CreateStandardInstruction(Instruction instruction, SegmentedAddress address) {
+        functions.TryGetValue(address, out FunctionInformation? function);
         return new EnrichedInstruction(instruction) {
             Bytes = memory.ReadRam((uint)instruction.Length, address.Linear),
-            Function = functions.SingleOrDefault(pair => pair.Key.Linear == address.Linear).Value,
+            Function = function,
             SegmentedAddress = address,
             Breakpoints = breakpointsViewModel.Breakpoints.Where(bp => bp.Address == address.Linear && bp.Type == BreakPointType.CPU_EXECUTION_ADDRESS).ToList()
         };

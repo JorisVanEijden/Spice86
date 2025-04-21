@@ -4,7 +4,9 @@ using CommunityToolkit.Mvvm.ComponentModel;
 
 using Iced.Intel;
 
+using Spice86.Core.Emulator.CPU;
 using Spice86.Core.Emulator.Function;
+using Spice86.Core.Emulator.Memory;
 using Spice86.Core.Emulator.VM.Breakpoint;
 using Spice86.Models.Debugging;
 using Spice86.Shared.Emulator.Memory;
@@ -22,7 +24,7 @@ public partial class DebuggerLineViewModel : ViewModelBase {
         MasmSymbolDisplInBrackets = false
     });
 
-    private readonly Instruction _info;
+    private readonly Instruction _instruction;
     private readonly List<FormattedTextSegment>? _customFormattedInstruction;
 
     [ObservableProperty]
@@ -35,9 +37,6 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     private bool _isSelected;
 
     [ObservableProperty]
-    private bool? _willJump;
-
-    [ObservableProperty]
     private bool _isGapLine;
 
     [ObservableProperty]
@@ -46,17 +45,26 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     [ObservableProperty]
     private string _gapDescription = string.Empty;
 
+    [ObservableProperty]
+    private bool _willJump;
+
+    /// <summary>
+    /// Gets the length of the instruction in bytes.
+    /// </summary>
+    public int InstructionLength => IsGapLine || IsSegmentStartLine ? 0 : _instruction.Length;
+
     /// <summary>
     /// Creates a regular instruction line for the debugger view.
     /// </summary>
     public DebuggerLineViewModel(EnrichedInstruction instruction, BreakpointsViewModel? breakpointsViewModel = null) {
-        _info = instruction.Instruction;
+        _instruction = instruction.Instruction;
         _breakpointsViewModel = breakpointsViewModel;
         ByteString = string.Join(' ', instruction.Bytes.Select(b => b.ToString("X2")));
         Function = instruction.Function;
         SegmentedAddress = instruction.SegmentedAddress;
         Address = SegmentedAddress.Linear;
-        NextAddress = (uint)(Address + _info.Length);
+        NextExecutionAddress = new SegmentedAddress(SegmentedAddress.Segment, (ushort)(SegmentedAddress.Offset + _instruction.Length));
+
         _customFormattedInstruction = instruction.FormattedInstruction;
 
         // We expect there to be at most 1 execution breakpoint per line, so we use SingleOrDefault.
@@ -72,16 +80,17 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     /// <param name="currentLine"></param>
     /// <param name="nextLine"></param>
     public DebuggerLineViewModel(DebuggerLineViewModel currentLine, DebuggerLineViewModel nextLine) {
-        _info = new Instruction();
+        _instruction = new Instruction();
         ByteString = string.Empty;
         Function = null;
         SegmentedAddress = currentLine.SegmentedAddress;
         Address = SegmentedAddress.Linear;
-        NextAddress = Address;
+        NextExecutionAddress = SegmentedAddress;
         IsGapLine = true;
 
-        // Calculate the gap size
-        long gapSize = nextLine.Address - currentLine.Address;
+        // Calculate the gap size based on instruction length
+        uint expectedNextAddress = currentLine.Address + (uint)currentLine.InstructionLength;
+        long gapSize = nextLine.Address - expectedNextAddress;
         GapDescription = $"--- Gap of {gapSize} (0x{gapSize:X}) bytes ---";
 
         // Create custom formatted instruction for the gap line
@@ -100,12 +109,12 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     /// </summary>
     /// <param name="segmentAddress">The segmented address at the start of the segment</param>
     public DebuggerLineViewModel(SegmentedAddress segmentAddress) {
-        _info = new Instruction();
+        _instruction = new Instruction();
         ByteString = string.Empty;
         Function = null;
         SegmentedAddress = segmentAddress;
         Address = segmentAddress.Linear;
-        NextAddress = Address;
+        NextExecutionAddress = segmentAddress;
         IsSegmentStartLine = true;
         GapDescription = $"--- Start of segment {segmentAddress.Segment:X4} ---";
 
@@ -130,11 +139,12 @@ public partial class DebuggerLineViewModel : ViewModelBase {
     /// </summary>
     public uint Address { get; }
 
-    public bool ContinuesToNextInstruction => _info.FlowControl == FlowControl.Next;
-    public bool CanBeSteppedOver => _info.FlowControl is FlowControl.Call or FlowControl.IndirectCall or FlowControl.Interrupt;
-    public uint NextAddress { get; private set; }
+    public bool CanBeSteppedOver => _instruction.IsLoop || _instruction.FlowControl is FlowControl.Call or FlowControl.Interrupt or FlowControl.IndirectCall;
 
-    public string Disassembly => _customFormattedInstruction != null ? string.Join(' ', _customFormattedInstruction.Select(segment => segment.Text)) : _info.ToString();
+    [ObservableProperty]
+    private SegmentedAddress _nextExecutionAddress;
+
+    public string Disassembly => _customFormattedInstruction != null ? string.Join(' ', _customFormattedInstruction.Select(segment => segment.Text)) : _instruction.ToString();
 
     /// <summary>
     ///     Gets a collection of formatted text segments for the disassembly with syntax highlighting.
@@ -151,9 +161,19 @@ public partial class DebuggerLineViewModel : ViewModelBase {
         } else {
             // Use standard Iced formatting for normal instructions
             var output = new FormattedTextSegmentsOutput();
-            _formatter.Format(_info, output);
+            _formatter.Format(_instruction, output);
             DisassemblySegments = output.Segments;
         }
+    }
+
+    public void ApplyCpuState(State cpuState, IMemory memory) {
+        // Use the NextExecutionAddressCalculator to determine the next execution address
+        var calculator = new NextExecutionAddressCalculator(_instruction, SegmentedAddress);
+        NextExecutionAddress = calculator.Calculate(cpuState, memory);
+
+        // Set the WillJump property based on whether the instruction will branch
+        // This is used for UI display purposes
+        WillJump = NextExecutionAddress.Linear != SegmentedAddress.Linear + _instruction.Length;
     }
 
     /// <summary>

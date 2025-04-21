@@ -143,6 +143,7 @@ public partial class StructureViewModel : ViewModelBase, IDisposable {
         if (value is null) {
             StructureMemory = _originalMemory;
             if (TryParseAddressString(MemoryAddress, _state, out uint? address)) {
+                Console.WriteLine($"Selected structure changed: Scrolling to address {MemoryAddress} ({address:X8})");
                 RequestScrollToAddress?.Invoke(this, new AddressChangedMessage(address.Value));
             }
         }
@@ -151,6 +152,7 @@ public partial class StructureViewModel : ViewModelBase, IDisposable {
 
     private void OnMemoryAddressChanged(string? value) {
         if (TryParseAddressString(value, _state, out uint? address)) {
+            Console.WriteLine($"Memory address changed: Scrolling to address {MemoryAddress} ({address:X8})");
             RequestScrollToAddress?.Invoke(this, new AddressChangedMessage(address.Value));
         }
         Update();

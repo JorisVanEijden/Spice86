@@ -194,7 +194,10 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
                 // Check if we need to add a gap line after this instruction
                 if (i < sortedAddresses.Count - 1) {
                     uint nextAddress = sortedAddresses[i + 1];
-                    if (nextAddress != currentLine.NextAddress) {
+                    // Calculate the expected next address based on instruction length
+                    uint expectedNextAddress = currentLine.Address + (uint)currentLine.InstructionLength;
+                    // Only create a gap if there's actually a gap between instructions
+                    if (nextAddress > expectedNextAddress) {
                         // Create a gap line
                         DebuggerLineViewModel nextLine = DebuggerLines[nextAddress];
                         var gapLine = new DebuggerLineViewModel(currentLine, nextLine);
@@ -346,7 +349,8 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         SegmentedAddress currentInstructionAddress = State.IpSegmentedAddress;
         _logger.Debug("Pausing: Captured instruction pointer at {CurrentInstructionAddress}", currentInstructionAddress);
 
-        EnsureAddressIsLoaded(currentInstructionAddress);
+        DebuggerLineViewModel debuggerLine = EnsureAddressIsLoaded(currentInstructionAddress);
+        debuggerLine.ApplyCpuState(State, _memory);
 
         // Set the current instruction address to trigger the view to scroll to it
         CurrentInstructionAddress = currentInstructionAddress;
