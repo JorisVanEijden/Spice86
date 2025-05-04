@@ -100,8 +100,8 @@
         <Grid Grid.Row="1" ColumnDefinitions="*, Auto">
             <!-- Loading indicator -->
             <progRing:ProgressRing Grid.Column="0"
-                                   Width="40"
-                                   Height="40"
+                                   MinWidth="40"
+                                   MinHeight="40"
                                    IsActive="{Binding IsLoading}"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"
@@ -126,29 +126,29 @@
                         <Setter Property="Padding" Value="4,1" />
                         <Setter Property="Margin" Value="0" />
                     </Style>
-                    
+
                     <!-- Style for segment start lines -->
                     <Style Selector="ContentControl.segment-start-line > Border">
                         <Setter Property="BorderBrush" Value="{DynamicResource DisassemblyLineSeparatorSegmentStartBrush}" />
                         <Setter Property="BorderThickness" Value="0,2,0,0" />
                     </Style>
-                    
+
                     <!-- Style for gap lines -->
                     <Style Selector="ContentControl.gap-line > Border">
                         <Setter Property="BorderBrush" Value="{DynamicResource DisassemblyLineSeparatorAddressGapBrush}" />
                         <Setter Property="BorderThickness" Value="0,0,0,2" />
                     </Style>
-                    
+
                     <!-- Default style for breakpoint indicators (no breakpoint) -->
                     <Style Selector="Ellipse.breakpoint-indicator">
                         <Setter Property="Fill" Value="Transparent" />
                     </Style>
-                    
+
                     <!-- Style for disabled breakpoints -->
                     <Style Selector="ContentControl.breakpoint-has-breakpoint:not(.breakpoint-enabled) Ellipse.breakpoint-indicator">
                         <Setter Property="Fill" Value="{DynamicResource DisassemblyBreakpointDisabledBrush}" />
                     </Style>
-                    
+
                     <!-- Style for enabled breakpoints -->
                     <Style Selector="ContentControl.breakpoint-has-breakpoint.breakpoint-enabled Ellipse.breakpoint-indicator">
                         <Setter Property="Fill" Value="{DynamicResource DisassemblyBreakpointEnabledBrush}" />
@@ -207,14 +207,14 @@
                                 <Grid ColumnDefinitions="Auto, Auto, *,4*,Auto,2*" Margin="0">
                                     <!-- Breakpoint indicator -->
                                     <Border Grid.Column="0"
-                                            Width="16"
-                                            Height="16"
+                                        MinWidth="16"
+                                        MinHeight="16"
                                             Background="Transparent"
                                             Tapped="OnBreakpointClicked"
                                             Cursor="Hand">
                                         <Ellipse
-                                            Width="12"
-                                            Height="12"
+                                            MinWidth="12"
+                                            MinHeight="12"
                                             Classes="breakpoint-indicator"
                                             HorizontalAlignment="Center"
                                             VerticalAlignment="Center"
@@ -234,7 +234,7 @@
                                                          Foreground="#B5CEA8"
                                                          FontFamily="Consolas,Menlo,Monaco,monospace"
                                                          FontSize="11"
-                                                         Width="110"
+                                                     MinWidth="110"
                                                          Margin="6,0,0,0" />
 
                                     <!-- Instruction -->
@@ -261,7 +261,7 @@
 
             <!-- Register View Panel -->
             <Border Grid.Column="1"
-                    Width="250"
+                    MinWidth="250"
                     IsVisible="{Binding IsPaused}"
                     BorderBrush="{DynamicResource SemiColorBorder}"
                     BorderThickness="1,0,0,0"

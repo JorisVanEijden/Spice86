@@ -54,18 +54,21 @@ public partial class BreakpointsViewModel : ViewModelBase {
                     SelectedBreakpointTypeTab = BreakpointTabs.First(x => x.Header == "Cycles");
                     break;
                 case BreakPointType.CPU_INTERRUPT:
-                    InterruptNumber = (int)SelectedBreakpoint.Address;
+
+                    InterruptNumber = ConvertUtils.ToHex32((uint)SelectedBreakpoint.Address);
                     SelectedBreakpointTypeTab = BreakpointTabs.First(x => x.Header == "Interrupt");
                     break;
                 case BreakPointType.IO_ACCESS:
-                    IoPortNumber = (ushort)SelectedBreakpoint.Address;
+                    IoPortNumber = ConvertUtils.ToHex32((uint)SelectedBreakpoint.Address);
                     SelectedBreakpointTypeTab = BreakpointTabs.First(x => x.Header == "I/O Port");
                     break;
                 case BreakPointType.MEMORY_ACCESS:
                 case BreakPointType.MEMORY_READ:
                 case BreakPointType.MEMORY_WRITE:
-                    MemoryBreakpointEndAddress = MemoryBreakpointStartAddress = ConvertUtils.ToHex32((uint)
+                    _memoryBreakpointEndAddress = _memoryBreakpointStartAddress = ConvertUtils.ToHex32((uint)
                         SelectedBreakpoint.Address);
+                    OnPropertyChanged(MemoryBreakpointStartAddress);
+                    OnPropertyChanged(MemoryBreakpointEndAddress);
                     if (SelectedBreakpoint is BreakpointRangeViewModel range) {
                         MemoryBreakpointEndAddress = ConvertUtils.ToHex32((uint)
                             range.EndTrigger);
@@ -131,8 +134,10 @@ public partial class BreakpointsViewModel : ViewModelBase {
     private void BeginCreateBreakpoint() {
         CreatingBreakpoint = true;
         CyclesValue = _state.Cycles;
-        ExecutionAddressValue = MemoryBreakpointStartAddress = MemoryBreakpointEndAddress =
+        ExecutionAddressValue = _memoryBreakpointStartAddress = _memoryBreakpointEndAddress =
             State.IpSegmentedAddress.ToString();
+        OnPropertyChanged(nameof(MemoryBreakpointStartAddress));
+        OnPropertyChanged(nameof(MemoryBreakpointEndAddress));
     }
 
     private long? _cyclesValue;
@@ -166,7 +171,7 @@ public partial class BreakpointsViewModel : ViewModelBase {
             ValidateAddressProperty(value, _state);
             ValidateMemoryAddressIsWithinLimit(_state, value);
             ValidateAddressRange(_state, value,
-                MemoryBreakpointEndAddress, nameof(MemoryBreakpointStartAddress));
+                MemoryBreakpointEndAddress, 0, nameof(MemoryBreakpointStartAddress));
             SetProperty(ref _memoryBreakpointStartAddress, value);
             ConfirmBreakpointCreationCommand.NotifyCanExecuteChanged();
         }
@@ -180,29 +185,29 @@ public partial class BreakpointsViewModel : ViewModelBase {
             ValidateAddressProperty(value, _state);
             ValidateMemoryAddressIsWithinLimit(_state, value);
             ValidateAddressRange(_state, MemoryBreakpointStartAddress,
-                value, nameof(MemoryBreakpointEndAddress));
+                value, 0, nameof(MemoryBreakpointEndAddress));
             SetProperty(ref _memoryBreakpointEndAddress, value);
             ConfirmBreakpointCreationCommand.NotifyCanExecuteChanged();
         }
     }
 
-    private ushort? _ioPortNumber;
+    private string? _ioPortNumber = "0x0";
 
-    public ushort? IoPortNumber {
+    public string? IoPortNumber {
         get => _ioPortNumber;
         set {
-            ValidateRequiredPropertyIsNotNull(value);
+            ValidateAddressProperty(value, _state);
             SetProperty(ref _ioPortNumber, value);
             ConfirmBreakpointCreationCommand.NotifyCanExecuteChanged();
         }
     }
 
-    private int? _interruptNumber;
+    private string? _interruptNumber = "0x0";
 
-    public int? InterruptNumber {
+    public string? InterruptNumber {
         get => _interruptNumber;
         set {
-            ValidateRequiredPropertyIsNotNull(value);
+            ValidateAddressProperty(value, _state);
             SetProperty(ref _interruptNumber, value);
             ConfirmBreakpointCreationCommand.NotifyCanExecuteChanged();
         }
@@ -253,27 +258,27 @@ public partial class BreakpointsViewModel : ViewModelBase {
                 }, "Cycles breakpoint");
             BreakpointCreated?.Invoke(cyclesVm);
         } else if (IsInterruptBreakpointSelected) {
-            if (InterruptNumber is null) {
+            if (!TryParseAddressString(InterruptNumber, _state, out uint? interruptNumber)) {
                 return;
             }
             BreakpointViewModel interruptVm = AddAddressBreakpoint(
-                InterruptNumber.Value,
+                interruptNumber.Value,
                 BreakPointType.CPU_INTERRUPT,
                 false,
                 () => {
-                    PauseAndReportInterrupt(InterruptNumber.Value);
+                    PauseAndReportInterrupt(interruptNumber.Value);
                 }, "Interrupt breakpoint");
             BreakpointCreated?.Invoke(interruptVm);
         } else if (IsIoPortBreakpointSelected) {
-            if (IoPortNumber is null) {
+            if (!TryParseAddressString(IoPortNumber, _state, out uint? ioPortNumber)) {
                 return;
             }
             BreakpointViewModel ioPortVm = AddAddressBreakpoint(
-                IoPortNumber.Value,
+                ioPortNumber.Value,
                 BreakPointType.IO_ACCESS,
                 false,
                 () => {
-                    PauseAndReportIoPort(IoPortNumber.Value);
+                    PauseAndReportIoPort((ushort)ioPortNumber.Value);
                 }, "I/O Port breakpoint");
             BreakpointCreated?.Invoke(ioPortVm);
         }
@@ -312,8 +317,9 @@ public partial class BreakpointsViewModel : ViewModelBase {
             return !ScanForValidationErrors(nameof(CyclesValue));
         } else if (IsMemoryBreakpointSelected) {
             return
-                !ScanForValidationErrors(nameof(MemoryBreakpointStartAddress)) &&
-                !ScanForValidationErrors(nameof(MemoryBreakpointEndAddress));
+                !ScanForValidationErrors(
+                    nameof(MemoryBreakpointStartAddress),
+                    nameof(MemoryBreakpointEndAddress));
         } else if (IsExecutionBreakpointSelected) {
             return !ScanForValidationErrors(nameof(ExecutionAddressValue));
         }
@@ -335,7 +341,7 @@ public partial class BreakpointsViewModel : ViewModelBase {
         Pause(message);
     }
 
-    private void PauseAndReportInterrupt(int interruptNumber) {
+    private void PauseAndReportInterrupt(uint interruptNumber) {
         string message = $"Interrupt breakpoint was reached at interrupt 0x{interruptNumber:X2}.";
         Pause(message);
     }
@@ -456,5 +462,12 @@ public partial class BreakpointsViewModel : ViewModelBase {
         breakpoint.Disable();
         Breakpoints.Remove(breakpoint);
         BreakpointDeleted?.Invoke(breakpoint);
+    }
+
+    /// Retrieves all execution breakpoints at the specified linear address.
+    /// <param name="addressLinear">The linear address where execution breakpoints are to be retrieved.</param>
+    /// <returns>An enumerable collection of breakpoints that are of type CPU_EXECUTION_ADDRESS and match the specified address.</returns>
+    public IEnumerable<BreakpointViewModel> GetExecutionBreakPointsAtAddress(uint addressLinear) {
+        return Breakpoints.Where(bp => bp.Address == addressLinear && bp.Type == BreakPointType.CPU_EXECUTION_ADDRESS);
     }
 }

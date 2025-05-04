@@ -11,6 +11,8 @@ using Spice86.ViewModels;
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
+using System.Linq;
 
 /// <summary>
 /// Decoder for x86 instructions that provides formatted output for disassembly views.
@@ -90,8 +92,8 @@ internal class InstructionsDecoder(IMemory memory, IDictionary<SegmentedAddress,
             Bytes = memory.ReadRam(CallbackOpcodeLength, address.Linear),
             Function = functions.SingleOrDefault(pair => pair.Key.Linear == address.Linear).Value,
             SegmentedAddress = address,
-            Breakpoints = breakpointsViewModel.Breakpoints.Where(bp => bp.Address == address.Linear && bp.Type == BreakPointType.CPU_EXECUTION_ADDRESS).ToList(),
-            FormattedInstruction = [
+            Breakpoints = breakpointsViewModel.GetExecutionBreakPointsAtAddress(address.Linear).ToImmutableList(),
+            InstructionFormatOverride = [
                 new FormattedTextSegment {
                     Text = "Spice86 callback ",
                     Kind = FormatterTextKind.Directive
@@ -113,7 +115,7 @@ internal class InstructionsDecoder(IMemory memory, IDictionary<SegmentedAddress,
             Bytes = memory.ReadRam((uint)instruction.Length, address.Linear),
             Function = function,
             SegmentedAddress = address,
-            Breakpoints = breakpointsViewModel.Breakpoints.Where(bp => bp.Address == address.Linear && bp.Type == BreakPointType.CPU_EXECUTION_ADDRESS).ToList()
+            Breakpoints = breakpointsViewModel.GetExecutionBreakPointsAtAddress(address.Linear).ToImmutableList(),
         };
     }
 
@@ -164,7 +166,7 @@ internal class InstructionsDecoder(IMemory memory, IDictionary<SegmentedAddress,
         SegmentedAddress currentAddress = startingAddress;
 
         // Decode instructions from the starting address
-        while (codeReader.Position < maxLength && startOffset + codeReader.Position < memoryBlock.Length - 2) {
+        while (codeReader.Position < maxLength && startOffset + codeReader.Position < memoryBlock.Length) {
             int currentOffset = startOffset + codeReader.Position;
 
             if (IsCallbackOpcode(memoryBlock, currentOffset, out byte callbackIndex)) {

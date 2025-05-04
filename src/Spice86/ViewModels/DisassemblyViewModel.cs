@@ -2,7 +2,6 @@ namespace Spice86.ViewModels;
 
 using Avalonia.Collections;
 using Avalonia.Controls;
-using Avalonia.Threading;
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Messaging;
@@ -85,7 +84,7 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
     private bool _isPaused;
 
     [ObservableProperty]
-    private RegistersViewModel _registers;
+    private IRegistersViewModel _registers;
 
     [ObservableProperty]
     private DebuggerLineViewModel? _selectedDebuggerLine;
@@ -274,8 +273,8 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
     /// <param name="enrichedInstructions">The dictionary of instructions to add.</param>
     private void UpdateDebuggerLinesInBatch(Dictionary<uint, EnrichedInstruction> enrichedInstructions) {
         // Ensure we're on the UI thread
-        if (!Dispatcher.UIThread.CheckAccess()) {
-            Dispatcher.UIThread.Post(() => UpdateDebuggerLinesInBatch(enrichedInstructions));
+        if (!_uiDispatcher.CheckAccess()) {
+            _uiDispatcher.Post(() => UpdateDebuggerLinesInBatch(enrichedInstructions));
 
             return;
         }
@@ -314,8 +313,8 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
 
     private void Breakpoints_CollectionChanged(object? sender, NotifyCollectionChangedEventArgs e) {
         // Ensure we're on the UI thread
-        if (!Dispatcher.UIThread.CheckAccess()) {
-            Dispatcher.UIThread.Post(() => Breakpoints_CollectionChanged(sender, e));
+        if (!_uiDispatcher.CheckAccess()) {
+            _uiDispatcher.Post(() => Breakpoints_CollectionChanged(sender, e));
 
             return;
         }
@@ -339,15 +338,17 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         }
 
         // Ensure we're on the UI thread
-        if (!Dispatcher.UIThread.CheckAccess()) {
-            Dispatcher.UIThread.Post(OnPaused);
+        if (!_uiDispatcher.CheckAccess()) {
+            _uiDispatcher.Post(OnPaused);
 
             return;
         }
-
+    
         // Capture the current CPU instruction pointer at the moment of pausing
         SegmentedAddress currentInstructionAddress = State.IpSegmentedAddress;
-        _logger.Debug("Pausing: Captured instruction pointer at {CurrentInstructionAddress}", currentInstructionAddress);
+        if (_logger.IsEnabled(LogEventLevel.Debug)) {
+            _logger.Debug("Pausing: Captured instruction pointer at {CurrentInstructionAddress}", currentInstructionAddress);
+        }
 
         DebuggerLineViewModel debuggerLine = EnsureAddressIsLoaded(currentInstructionAddress);
         debuggerLine.ApplyCpuState(State, _memory);
@@ -367,23 +368,32 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         if (TryGetLineByAddress(address, out DebuggerLineViewModel? debuggerLine)) {
             return debuggerLine;
         }
-        _logger.Debug("Current address {CurrentInstructionAddress} not found in DebuggerLines, loading instructions", address);
+        if (_logger.IsEnabled(LogEventLevel.Debug)) {
+            _logger.Debug("Current address {CurrentInstructionAddress} not found in DebuggerLines, loading instructions", address);
+        }
 
         try {
             IsLoading = true;
 
             // Decode the instructions
-            _logger.Debug("Decoding instructions for address {Address}", address);
+            if (_logger.IsEnabled(LogEventLevel.Debug)) {
+                _logger.Debug("Decoding instructions for address {Address}", address);
+            }
             Dictionary<uint, EnrichedInstruction> instructions = _instructionsDecoder.DecodeInstructions(address, 256, 512);
-            _logger.Debug("Decoded {Count} instructions", instructions.Count);
+            if (_logger.IsEnabled(LogEventLevel.Debug)) {
+                _logger.Debug("Decoded {Count} instructions", instructions.Count);
+            }
 
             UpdateDebuggerLinesInBatch(instructions);
-
-            _logger.Debug("Instructions loaded, now contains {DebuggerLinesCount} instructions", DebuggerLines.Count);
+            if (_logger.IsEnabled(LogEventLevel.Debug)) {
+                _logger.Debug("Instructions loaded, now contains {DebuggerLinesCount} instructions", DebuggerLines.Count);
+            }
 
             // Verify that the current instruction is now in the collection
             if (!TryGetLineByAddress(address, out debuggerLine)) {
-                _logger.Error("Address {Address} still not found after loading instructions", address);
+                if (_logger.IsEnabled(LogEventLevel.Error)) {
+                    _logger.Error("Address {Address} still not found after loading instructions", address);
+                }
 
                 throw new InvalidOperationException($"Current address {address} still not found in DebuggerLines after update");
             }
@@ -399,8 +409,8 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
     /// </summary>
     private void UpdateCpuInstructionHighlighting() {
         // Ensure we're on the UI thread
-        if (!Dispatcher.UIThread.CheckAccess()) {
-            Dispatcher.UIThread.Post(UpdateCpuInstructionHighlighting);
+        if (!_uiDispatcher.CheckAccess()) {
+            _uiDispatcher.Post(UpdateCpuInstructionHighlighting);
 
             return;
         }
@@ -413,8 +423,9 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
         _isUpdatingHighlighting = true;
 
         try {
-            // Log the current state for debugging
-            _logger.Debug("Updating highlighting: CPU instruction address={CpuInstructionAddress}, Previous={PreviousInstructionAddress}", State.IpSegmentedAddress, _previousInstructionAddress);
+            if (_logger.IsEnabled(LogEventLevel.Debug)) {
+                _logger.Debug("Updating highlighting: CPU instruction address={CpuInstructionAddress}, Previous={PreviousInstructionAddress}", State.IpSegmentedAddress, _previousInstructionAddress);
+            }
 
             DebuggerLineViewModel currentLine = EnsureAddressIsLoaded(State.IpSegmentedAddress);
             currentLine.IsCurrentInstruction = true;
