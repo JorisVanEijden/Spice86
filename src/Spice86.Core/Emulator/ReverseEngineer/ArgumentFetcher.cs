@@ -132,4 +132,12 @@ public class ArgumentFetcher {
         arg1 = _stack.Peek32(4);
         arg2 = _stack.Peek16(8);
     }
+
+    public void Get(out string arg1, out string arg2, out ushort arg3) {
+        ushort arg1PointerOffset = _stack.Peek16(4);
+        ushort arg2PointerOffset = _stack.Peek16(6);
+        arg1 = GetStringFromDsPointer(arg1PointerOffset);
+        arg2 = GetStringFromDsPointer(arg2PointerOffset);
+        arg3 = _stack.Peek16(8);
+    }
 }

@@ -19,6 +19,7 @@ public partial class StructureView : Window {
     }
 
     private void ViewModel_RequestScrollToAddress(object? sender, AddressChangedMessage e) {
+        // TODO: BUGFIX: it appears this does not always show the desired address at the topleft position
         var scrollOffset = new Vector(0.0, (double)e.Address / StructureHexEditor.HexView.ActualBytesPerLine);
         StructureHexEditor.Caret.HexView.ScrollOffset = scrollOffset;
     }

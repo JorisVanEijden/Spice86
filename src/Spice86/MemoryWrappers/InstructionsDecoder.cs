@@ -175,6 +175,9 @@ internal class InstructionsDecoder(IMemory memory, IDictionary<SegmentedAddress,
                 currentAddress += CallbackOpcodeLength;
             } else {
                 decoder.Decode(out Instruction instruction);
+                if (instruction.IsInvalid) {
+                    break;
+                }
                 instructions[currentAddress.Linear] = CreateStandardInstruction(instruction, currentAddress);
                 currentAddress += (ushort)instruction.Length;
             }

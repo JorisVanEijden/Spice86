@@ -64,6 +64,7 @@ public partial class DebuggerLineViewModel : ViewModelBase {
         SegmentedAddress = instruction.SegmentedAddress;
         Address = SegmentedAddress.Linear;
         NextExecutionAddress = new SegmentedAddress(SegmentedAddress.Segment, (ushort)(SegmentedAddress.Offset + _instruction.Length));
+        IsGapLine = _instruction.FlowControl == FlowControl.Return;
 
         _customFormattedInstruction = instruction.InstructionFormatOverride;
 

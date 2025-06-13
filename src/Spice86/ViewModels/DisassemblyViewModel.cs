@@ -380,6 +380,7 @@ public partial class DisassemblyViewModel : ViewModelWithErrorDialog, IDisassemb
                 _logger.Debug("Decoding instructions for address {Address}", address);
             }
             Dictionary<uint, EnrichedInstruction> instructions = _instructionsDecoder.DecodeInstructions(address, 256, 512);
+            // TODO: Ensure that stepping close to a gap should load more instructions
             if (_logger.IsEnabled(LogEventLevel.Debug)) {
                 _logger.Debug("Decoded {Count} instructions", instructions.Count);
             }
