@@ -105,4 +105,39 @@ public class ArgumentFetcher {
         uint address = MemoryUtils.ToPhysicalAddress(_state.DS, offset);
         return _memory.GetZeroTerminatedString(address, int.MaxValue);
     }
+
+    public void Get(out ushort arg1, out uint arg2, out uint arg3) {
+        arg1 = _stack.Peek16(4);
+        arg2 = _stack.Peek32(6);
+        arg3 = _stack.Peek32(10);
+    }
+
+    public void Get(out ushort arg1, out byte arg2, out byte arg3) {
+        arg1 = _stack.Peek16(4);
+        arg2 = _stack.Peek8(6);
+        arg3 = _stack.Peek8(7);
+    }
+
+    public void Get(out ushort arg1, out byte arg2) {
+        arg1 = _stack.Peek16(4);
+        arg2 = _stack.Peek8(6);
+    }
+
+    public void Get(out ushort arg1, out uint arg2) {
+        arg1 = _stack.Peek16(4);
+        arg2 = _stack.Peek32(6);
+    }
+
+    public void Get(out uint arg1, out ushort arg2) {
+        arg1 = _stack.Peek32(4);
+        arg2 = _stack.Peek16(8);
+    }
+
+    public void Get(out string arg1, out string arg2, out ushort arg3) {
+        ushort arg1PointerOffset = _stack.Peek16(4);
+        ushort arg2PointerOffset = _stack.Peek16(6);
+        arg1 = GetStringFromDsPointer(arg1PointerOffset);
+        arg2 = GetStringFromDsPointer(arg2PointerOffset);
+        arg3 = _stack.Peek16(8);
+    }
 }
