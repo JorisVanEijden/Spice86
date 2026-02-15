@@ -28,7 +28,6 @@ using System.Text;
 public class DosInt21Handler : InterruptHandler {
     private readonly DosMemoryManager _dosMemoryManager;
     private readonly DosDriveManager _dosDriveManager;
-    private readonly DosProgramSegmentPrefixTracker _dosPspTracker;
     private readonly InterruptVectorTable _interruptVectorTable;
     private readonly DosFileManager _dosFileManager;
     private readonly KeyboardInt16Handler _keyboardInt16Handler;
@@ -37,6 +36,7 @@ public class DosInt21Handler : InterruptHandler {
     private readonly DosProcessManager _dosProcessManager;
     private readonly IOPortDispatcher _ioPortDispatcher;
     private readonly DosTables _dosTables;
+    private readonly DosSwappableDataArea _sda;
 
     private byte _lastDisplayOutputCharacter = 0x0;
     private bool _isCtrlCFlag;
@@ -48,7 +48,6 @@ public class DosInt21Handler : InterruptHandler {
     /// Initializes a new instance.
     /// </summary>
     /// <param name="memory">The emulator memory.</param>
-    /// <param name="dosPspTracker">The DOS class used to track the current loaded program.</param>
     /// <param name="functionHandlerProvider">Provides current call flow handler to peek call stack.</param>
     /// <param name="stack">The CPU stack.</param>
     /// <param name="state">The CPU state.</param>
@@ -62,7 +61,7 @@ public class DosInt21Handler : InterruptHandler {
     /// <param name="ioPortDispatcher">The I/O port dispatcher for accessing hardware ports (e.g., CMOS).</param>
     /// <param name="dosTables">The DOS tables structure containing CDS and DBCS information.</param>
     /// <param name="loggerService">The logger service implementation.</param>
-    public DosInt21Handler(IMemory memory, DosProgramSegmentPrefixTracker dosPspTracker,
+    public DosInt21Handler(IMemory memory,
         IFunctionHandlerProvider functionHandlerProvider, Stack stack, State state,
         KeyboardInt16Handler keyboardInt16Handler, CountryInfo countryInfo,
         DosStringDecoder dosStringDecoder, DosMemoryManager dosMemoryManager,
@@ -70,8 +69,8 @@ public class DosInt21Handler : InterruptHandler {
         DosProcessManager dosProcessManager,
         IOPortDispatcher ioPortDispatcher, DosTables dosTables, ILoggerService loggerService)
             : base(memory, functionHandlerProvider, stack, state, loggerService) {
+        _sda = new(memory, MemoryUtils.ToPhysicalAddress(DosSwappableDataArea.BaseSegment, 0));
         _countryInfo = countryInfo;
-        _dosPspTracker = dosPspTracker;
         _dosStringDecoder = dosStringDecoder;
         _keyboardInt16Handler = keyboardInt16Handler;
         _dosMemoryManager = dosMemoryManager;
@@ -93,7 +92,8 @@ public class DosInt21Handler : InterruptHandler {
     /// Register the handlers for the DOS INT21H services that we support.
     /// </summary>
     private void FillDispatchTable() {
-        AddAction(0x00, QuitWithExitCode);
+        AddAction(0x00, LegacyTerminateProgram);
+        AddAction(0x01, CharacterInputWithEcho);
         AddAction(0x02, DisplayOutput);
         AddAction(0x03, ReadCharacterFromStdAux);
         AddAction(0x04, WriteCharacterToStdAux);
@@ -129,7 +129,7 @@ public class DosInt21Handler : InterruptHandler {
         AddAction(0x3A, () => RemoveDirectory(true));
         AddAction(0x3B, () => ChangeCurrentDirectory(true));
         AddAction(0x3C, () => CreateFileUsingHandle(true));
-        AddAction(0x3D, () => OpenFileorDevice(true));
+        AddAction(0x3D, () => OpenFileOrDevice(true));
         AddAction(0x3E, () => CloseFileOrDevice(true));
         AddAction(0x3F, () => ReadFileOrDevice(true));
         AddAction(0x40, () => WriteToFileOrDevice(true));
@@ -152,9 +152,51 @@ public class DosInt21Handler : InterruptHandler {
         AddAction(0x51, GetPspAddress);
         AddAction(0x52, GetListOfLists);
         AddAction(0x55, CreateChildPsp);
+        AddAction(0x58, () => AllocationStrategyOrUpperMemoryLinkState(true));
         AddAction(0x62, GetPspAddress);
         AddAction(0x63, GetLeadByteTable);
         AddAction(0x66, () => GetSetGlobalLoadedCodePageTable(true));
+    }
+
+    /// <summary>
+    /// INT 21h, AH=01h - Character Input with Echo.
+    /// <para>
+    /// Reads a single character from standard input and echoes it to standard output.
+    /// The program waits for input; the user just needs to press the intended key
+    /// WITHOUT pressing "enter" key.
+    /// </para>
+    /// <b>Returns:</b><br/>
+    /// AL = ASCII code of the input character
+    /// </summary>
+    /// <remarks>
+    /// This is a blocking call that reads from STDIN.
+    /// The console device's Read method handles the echo internally when Echo is true. <br/>
+    /// Used by (for example): Civilization.
+    /// </remarks>
+    public void CharacterInputWithEcho() {
+        if (LoggerService.IsEnabled(LogEventLevel.Verbose)) {
+            LoggerService.Verbose("CHARACTER INPUT WITH ECHO");
+        }
+        if (_dosFileManager.TryGetStandardInput(out CharacterDevice? stdIn) &&
+            stdIn.CanRead) {
+            ConsoleDevice? consoleDevice = stdIn as ConsoleDevice;
+            bool previousEchoState = false;
+            if (consoleDevice != null) {
+                previousEchoState = consoleDevice.Echo;
+                consoleDevice.Echo = true;
+            }
+            
+            byte[] bytes = new byte[1];
+            int readCount = stdIn.Read(bytes, 0, 1);
+            
+            if (consoleDevice != null) {
+                consoleDevice.Echo = previousEchoState;
+            }
+            
+            State.AL = readCount < 1 ? (byte)0 : bytes[0];
+        } else {
+            State.AL = 0;
+        }
     }
 
     public void SetDate() {
@@ -531,6 +573,9 @@ public class DosInt21Handler : InterruptHandler {
         DosFileOperationResult dosFileOperationResult = _dosFileManager.CloseFileOrDevice(
             fileHandle);
         SetStateFromDosFileOperationResult(calledFromVm, dosFileOperationResult);
+        if (!dosFileOperationResult.IsError) {
+            State.AL = dosFileOperationResult.RefCount;
+        }
     }
 
     /// <summary>
@@ -828,7 +873,7 @@ public class DosInt21Handler : InterruptHandler {
         if (LoggerService.IsEnabled(LogEventLevel.Verbose)) {
             LoggerService.Verbose("SET CURRENT PSP: {PspSegment}", ConvertUtils.ToHex16(State.BX));
         }
-        _dosPspTracker.SetCurrentPspSegment(State.BX);
+        _sda.CurrentProgramSegmentPrefix = State.BX;
     }
 
     /// <summary>
@@ -929,7 +974,7 @@ public class DosInt21Handler : InterruptHandler {
         ushort paragraphsToKeep = State.DX;
         byte returnCode = State.AL;
 
-        ushort currentPspSegment = _dosPspTracker.GetCurrentPspSegment();
+        ushort currentPspSegment = _sda.CurrentProgramSegmentPrefix;
 
         if (LoggerService.IsEnabled(LogEventLevel.Information)) {
             LoggerService.Information(
@@ -943,7 +988,7 @@ public class DosInt21Handler : InterruptHandler {
             out DosMemoryControlBlock resizedBlock);
 
         if (errorCode == DosErrorCode.NoError) {
-            _dosProcessManager.TrackResidentBlock(currentPspSegment, resizedBlock);
+            _dosProcessManager.TrackResidentBlock(resizedBlock);
         }
 
         // Even if resize fails, we still terminate as a TSR
@@ -1012,7 +1057,7 @@ public class DosInt21Handler : InterruptHandler {
     /// The segment of the current PSP in BX.
     /// </returns>
     public void GetPspAddress() {
-        ushort pspSegment = _dosPspTracker.GetCurrentPspSegment();
+        ushort pspSegment = _sda.CurrentProgramSegmentPrefix;
         State.BX = pspSegment;
         if (LoggerService.IsEnabled(LogEventLevel.Verbose)) {
             LoggerService.Verbose("GET PSP ADDRESS {PspSegment}",
@@ -1109,7 +1154,7 @@ public class DosInt21Handler : InterruptHandler {
     /// </summary>
     /// <returns>
     /// CF is cleared on success. <br/>
-    /// On success, AX is set to the size of the MCB, which is at least equal to the requested size.
+    /// On success, AX is set to the segment (ES value).
     /// CF is set on error. The error is in AX. <br/>
     /// Possible error code in AX: 0x08 (Insufficient memory) or 0x09 (MCB block destroyed). <br/>
     /// BX is set to largest free block size in paragraphs on error. <br/>
@@ -1125,7 +1170,8 @@ public class DosInt21Handler : InterruptHandler {
         DosErrorCode errorCode = _dosMemoryManager.TryModifyBlock(blockSegment,
             requestedSizeInParagraphs, out DosMemoryControlBlock mcb);
         if (errorCode == DosErrorCode.NoError) {
-            State.AX = mcb.Size;
+            // Undocumented MS-DOS behaviour expected by BRUN45!
+            State.AX = blockSegment;
             SetCarryFlag(false, calledFromVm);
         } else {
             LogDosError(calledFromVm);
@@ -1266,7 +1312,7 @@ public class DosInt21Handler : InterruptHandler {
     /// CF is set on error.
     /// </returns>
     /// <param name="calledFromVm">Whether the code was called by the emulator.</param>
-    public void OpenFileorDevice(bool calledFromVm) {
+    public void OpenFileOrDevice(bool calledFromVm) {
         string fileName = _dosStringDecoder.GetZeroTerminatedStringAtDsDx();
         byte accessMode = State.AL;
         FileAccessMode fileAccessMode = (FileAccessMode)(accessMode & 0b111);
@@ -1298,6 +1344,19 @@ public class DosInt21Handler : InterruptHandler {
         } else if (LoggerService.IsEnabled(LogEventLevel.Warning)) {
             LoggerService.Warning("DOS INT21H PrintString: Cannot write to standard output device.");
         }
+    }
+
+    /// <summary>
+    /// Legacy CP/M program termination handler (INT 21h, AH=00h).
+    /// Behaves like INT 21h, AH=4Ch with AL=0.
+    /// </summary>
+    /// <remarks>
+    /// Code is adapted from FreeDOS <c>inthndlr.c</c>.
+    /// </remarks>
+    public void LegacyTerminateProgram() {
+        State.AL = 0;
+        State.AH = 0x4C;
+        QuitWithExitCode();
     }
 
     /// <summary>
@@ -1372,6 +1431,56 @@ public class DosInt21Handler : InterruptHandler {
         State.AL = ExpectedValueOfALInCreateChildPsp;
     }
 
+    /// <summary>
+    /// Subfunction ID in AL for <see cref="AllocationStrategyOrUpperMemoryLinkState"/>
+    /// </summary>
+    public enum AllocationStrategySubFunction : byte {
+        /// <summary>
+        /// Gets the current strategy in AX
+        /// </summary>
+        QueryMemoryAllocationStrategy = 0x0,
+        /// <summary>
+        /// Sets the current strategy from BX
+        /// </summary>
+        SetMemoryAllocationStrategy = 0x1,
+        /// <summary>
+        /// Gets whether the upper memory block is currently linked in AL (1) or not (0).
+        /// </summary>
+        QueryUpperMemoryBlockState = 0x2,
+        /// <summary>
+        /// Set the state of the upper memory block link.
+        /// </summary>
+        SetUpperMemoryBlockState = 0x3,
+    }
+
+    /// <summary>
+    /// INT 21h, AH=58h
+    /// AX=5800H Query Memory Allocation Strategy
+    /// AX=5801H Set Memory Allocation Strategy
+    /// AX=5802H Query Upper-Memory Link State
+    /// AX=5803H Set Upper-Memory Link State
+    /// </summary>
+    public void AllocationStrategyOrUpperMemoryLinkState(bool calledFromVm) {
+        byte op = State.AL;
+        if (op == (byte)AllocationStrategySubFunction.QueryMemoryAllocationStrategy) {
+            State.AX = (ushort)_dosMemoryManager.AllocationStrategy;
+            SetCarryFlag(false, calledFromVm);
+        } else if (op == (byte)AllocationStrategySubFunction.SetMemoryAllocationStrategy) {
+            _dosMemoryManager.AllocationStrategy = (DosMemoryAllocationStrategy)State.BX;
+            State.AX = 0;
+            SetCarryFlag(false, calledFromVm);
+        } else if (op == (byte)AllocationStrategySubFunction.QueryUpperMemoryBlockState) {
+            // 01H = upper memory is currently linked
+            // 00H = not linked (all allocations go to conventional mem)
+            State.AL = 0x00;
+            SetCarryFlag(false, calledFromVm);
+        } else if (op == (byte)AllocationStrategySubFunction.SetUpperMemoryBlockState) {
+            State.AX = 0x01; // 0001h (invalid function)
+            SetCarryFlag(true, calledFromVm);
+        } else {
+            throw GenerateUnhandledOperationException(op);
+        }
+    }
     /// <summary>
     /// Reads a file from disk from the file handle in BX, the read length in CX, and the buffer at DS:DX.
     /// </summary>
@@ -1509,7 +1618,7 @@ public class DosInt21Handler : InterruptHandler {
                 ConvertUtils.ToSegmentedAddressRepresentation(
                     State.DS, State.SI), currentDir);
         }
-        Memory.SetZeroTerminatedString(responseAddress, currentDir, currentDir.Length);
+        Memory.SetZeroTerminatedString(responseAddress, currentDir);
         // According to Ralf's Interrupt List, many Microsoft Windows products rely on AX being 0x0100 on success
         if (!result.IsError) {
             State.AX = 0x0100;

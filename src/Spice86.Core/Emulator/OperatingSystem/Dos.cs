@@ -62,6 +62,11 @@ public sealed class Dos {
     public DosInt2fHandler DosInt2FHandler { get; }
 
     /// <summary>
+    /// Gets the INT 2Ah DOS services (minimal stub).
+    /// </summary>
+    public DosInt2aHandler DosInt2aHandler { get; }
+
+    /// <summary>
     /// Gets the INT 25H DOS Disk services.
     /// </summary>
     public DosDiskInt25Handler DosInt25Handler { get; }
@@ -192,21 +197,27 @@ public sealed class Dos {
         CountryInfo = new();
         FileManager = new DosFileManager(_memory, dosStringDecoder, DosDriveManager,
             _loggerService, Devices);
-        DosProgramSegmentPrefixTracker pspTracker = new(configuration, _memory, DosSwappableDataArea, _loggerService);
+
+        // Calculate initial PSP segment from configuration (PSP is 16 paragraphs before entry point)
+        ushort initialPspSegment = (ushort)(configuration.ProgramEntryPointSegment - 0x10);
+
+        // Initialize the SDA with the initial PSP segment
+        DosSwappableDataArea.CurrentProgramSegmentPrefix = initialPspSegment;
 
         // Initialize memory manager first - it must know about the root COMMAND.COM reserved space
         // Root PSP is at 0x60, environment at 0x68, so MCB chain starts after 0x6F
         // This matches FreeDOS where DOS_PSP + 16 paragraphs is reserved
-        MemoryManager = new DosMemoryManager(_memory, pspTracker, loggerService);
+        MemoryManager = new DosMemoryManager(_memory, initialPspSegment, loggerService);
 
-        ProcessManager = new(_memory, stack, state, pspTracker, MemoryManager, FileManager, DosDriveManager, envVars, _loggerService);
+        ProcessManager = new(_memory, stack, state, MemoryManager, FileManager, DosDriveManager, envVars, _loggerService);
         DosInt22Handler = new DosInt22Handler(_memory, functionHandlerProvider, stack, state, ProcessManager, _loggerService);
-        DosInt21Handler = new DosInt21Handler(_memory, pspTracker, functionHandlerProvider, stack, state,
+        DosInt21Handler = new DosInt21Handler(_memory, functionHandlerProvider, stack, state,
             keyboardInt16Handler, CountryInfo, dosStringDecoder,
             MemoryManager, FileManager, DosDriveManager, ProcessManager, ioPortDispatcher, DosTables, _loggerService);
         DosInt23Handler = new DosInt23Handler(_memory, functionHandlerProvider, stack, state, ProcessManager, _loggerService);
         DosInt24Handler = new DosInt24Handler(_memory, functionHandlerProvider, stack, state, _loggerService);
         DosInt20Handler = new DosInt20Handler(_memory, functionHandlerProvider, stack, state, DosInt21Handler, _loggerService);
+        DosInt2aHandler = new DosInt2aHandler(_memory, functionHandlerProvider, stack, state, _loggerService);
         DosInt2FHandler = new DosInt2fHandler(_memory,
             functionHandlerProvider, stack, state, _loggerService, xms);
         DosInt25Handler = new DosDiskInt25Handler(_memory, DosDriveManager,

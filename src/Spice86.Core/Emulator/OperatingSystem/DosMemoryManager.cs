@@ -1,4 +1,4 @@
-﻿namespace Spice86.Core.Emulator.OperatingSystem;
+namespace Spice86.Core.Emulator.OperatingSystem;
 
 using Serilog.Events;
 
@@ -8,6 +8,8 @@ using Spice86.Core.Emulator.OperatingSystem.Enums;
 using Spice86.Core.Emulator.OperatingSystem.Structures;
 using Spice86.Shared.Interfaces;
 using Spice86.Shared.Utils;
+
+using System.Linq;
 
 /// <summary>
 /// Implements DOS memory operations, such as allocating and releasing MCBs.
@@ -23,8 +25,9 @@ public class DosMemoryManager {
     private const byte HighMemOnlyNoFallback = 0x80;
     private readonly ILoggerService _loggerService;
     private readonly IMemory _memory;
-    private readonly DosProgramSegmentPrefixTracker _pspTracker;
     private readonly DosMemoryControlBlock _start;
+
+    private readonly DosSwappableDataArea _sda;
 
     /// <summary>
     /// The current memory allocation strategy used for INT 21h/48h (allocate memory).
@@ -39,15 +42,14 @@ public class DosMemoryManager {
     /// Initializes a new instance.
     /// </summary>
     /// <param name="memory">The memory bus.</param>
-    /// <param name="pspTracker">The class responsible for DOS program loader configuration.</param>
+    /// <param name="initialPspSegment">The initial PSP segment for MCB chain setup.</param>
     /// <param name="loggerService">The logger service implementation.</param>
-    public DosMemoryManager(IMemory memory,
-        DosProgramSegmentPrefixTracker pspTracker, ILoggerService loggerService) {
+    public DosMemoryManager(IMemory memory, ushort initialPspSegment, ILoggerService loggerService) {
         _loggerService = loggerService;
-        _pspTracker = pspTracker;
         _memory = memory;
+        _sda = new(_memory, MemoryUtils.ToPhysicalAddress(DosSwappableDataArea.BaseSegment, 0));
 
-        ushort pspSegment = _pspTracker.InitialPspSegment;
+        ushort pspSegment = initialPspSegment;
         // The MCB starts 1 paragraph (16 bytes) before the 16 paragraph (256 bytes) PSP. Since
         // we're the memory manager, we're the one who needs to read the MCB, so we need to start
         // with its address by subtracting 1 paragraph from the PSP.
@@ -90,7 +92,7 @@ public class DosMemoryManager {
                 return;
             }
             byte highMemBits = (byte)((byte)value & HighMemMask);
-            if (highMemBits != 0x00 && highMemBits != HighMemFirstThenLow && highMemBits != HighMemOnlyNoFallback) {
+            if (highMemBits is not 0x00 and not HighMemFirstThenLow and not HighMemOnlyNoFallback) {
                 // Invalid high memory bits, ignore
                 return;
             }
@@ -125,7 +127,7 @@ public class DosMemoryManager {
             return null;
         }
 
-        block.PspSegment = _pspTracker.GetCurrentPspSegment();
+        block.PspSegment = _sda.CurrentProgramSegmentPrefix;
         return block;
     }
 
@@ -134,28 +136,19 @@ public class DosMemoryManager {
     /// </summary>
     /// <returns>The largest free <see cref="DosMemoryControlBlock"/></returns>
     public DosMemoryControlBlock FindLargestFree() {
+        return EnumerateBlocks()
+            .Where(block => block.IsFree)
+            .MaxBy(block => block.Size) ?? _start;
+    }
+
+    private IEnumerable<DosMemoryControlBlock> EnumerateBlocks() {
         DosMemoryControlBlock? current = _start;
-        DosMemoryControlBlock? largest = null;
-        while (true) {
-            if (current != null && current.IsFree && (largest == null || current.Size > largest.Size)) {
-                largest = current;
+        while (current != null) {
+            yield return current;
+            if (current.IsLast) {
+                break;
             }
-
-            if (current != null && current.IsLast && largest != null) {
-                return largest;
-            }
-
-            if (current == null) {
-                continue;
-            }
-
-            DosMemoryControlBlock? next = current.GetNextOrDefault();
-
-            if (next is null) {
-                return current;
-            }
-
-            current = next;
+            current = current.GetNextOrDefault();
         }
     }
 
@@ -192,48 +185,42 @@ public class DosMemoryManager {
     public DosErrorCode TryModifyBlock(in ushort blockSegment, in ushort requestedSizeInParagraphs,
         out DosMemoryControlBlock block) {
         block = GetDosMemoryControlBlockFromSegment((ushort)(blockSegment - 1));
+        ushort newSizeInParagraphs = requestedSizeInParagraphs;
+
         if (!CheckValidOrLogError(block)) {
-            block = this.FindLargestFree();
             return DosErrorCode.MemoryControlBlockDestroyed;
         }
 
-        // Since the first thing we do is enlarge the block, we need to know the original size so
-        // that we can restore it if we encounter an error later. We need to make sure that the
-        // block doesn't grow to the maximum supported size on error.
-        ushort initialBlockSizeInParagraphs = block.Size;
+        //AlphaWaves loader starts a TSR for adlib-sound that wrongly sets the block-size in DX leaving BX = 0
+        if (newSizeInParagraphs == 0 && blockSegment == _sda.CurrentProgramSegmentPrefix) {
+            newSizeInParagraphs = DosProgramSegmentPrefix.PspSizeInParagraphs;
+        }
 
         // Make the block the biggest it can get
         if (!JoinBlocks(block, false)) {
             if (_loggerService.IsEnabled(LogEventLevel.Error)) {
                 _loggerService.Error("Could not join MCB {Block}", block);
             }
-            block = this.FindLargestFree();
             return DosErrorCode.InsufficientMemory;
         }
 
-        if (block.Size < requestedSizeInParagraphs) {
-            // Restore the original size of the block.
-            if (block.Size != initialBlockSizeInParagraphs) {
-                SplitBlock(block, initialBlockSizeInParagraphs);
-            }
-
+        if (block.Size < newSizeInParagraphs) {
             if (_loggerService.IsEnabled(LogEventLevel.Error)) {
                 _loggerService.Error("MCB {Block} is too small for requested size {RequestedSize}",
-                    block, requestedSizeInParagraphs);
+                    block, newSizeInParagraphs);
 
                 if (_loggerService.IsEnabled(LogEventLevel.Verbose) && !block.IsLast) {
                     DosMemoryControlBlock? nextBlock = block.GetNextOrDefault();
                     _loggerService.Verbose("Next MCB is {Block}", nextBlock);
                 }
             }
-            block = this.FindLargestFree();
             return DosErrorCode.InsufficientMemory;
         }
 
-        if (block.Size > requestedSizeInParagraphs) {
-            SplitBlock(block, requestedSizeInParagraphs);
+        if (block.Size > newSizeInParagraphs) {
+            SplitBlock(block, newSizeInParagraphs);
         }
-        block.PspSegment = _pspTracker.GetCurrentPspSegment();
+        block.PspSegment = _sda.CurrentProgramSegmentPrefix;
         return DosErrorCode.NoError;
     }
 
@@ -427,7 +414,7 @@ public class DosMemoryManager {
             return null;
         }
 
-        block.PspSegment = _pspTracker.GetCurrentPspSegment(); // Marks the block as allocated.
+        block.PspSegment = _sda.CurrentProgramSegmentPrefix; // Marks the block as allocated.
         return block;
     }
 
@@ -463,7 +450,7 @@ public class DosMemoryManager {
         if (block.Size > size.MaxSizeInParagraphs) {
             SplitBlock(block, size.MaxSizeInParagraphs);
         }
-        block.PspSegment = _pspTracker.GetCurrentPspSegment(); // Marks the block as allocated.
+        block.PspSegment = _sda.CurrentProgramSegmentPrefix; // Marks the block as allocated.
         return block;
     }
 

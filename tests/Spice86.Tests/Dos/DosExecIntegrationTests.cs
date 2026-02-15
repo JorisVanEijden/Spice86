@@ -15,7 +15,7 @@ using Xunit;
 public class DosExecIntegrationTests {
     [Fact]
     public void ExecModesAndOverlays_ShouldReportSuccessViaVideoMemory() {
-        string resourceDir = Path.Join(AppContext.BaseDirectory, "Resources", "DosExecIntegration");
+        string resourceDir = Path.Join(AppContext.BaseDirectory, "Resources", "DosExecTests");
         string tempDir = Path.Join(Path.GetTempPath(), $"dos_exec_{Guid.NewGuid()}");
         Directory.CreateDirectory(tempDir);
         foreach (string file in new[] { "dos_exec_master.com", "child.com", "tsr_hook.com", "overlay_driver.bin" }) {
@@ -30,7 +30,6 @@ public class DosExecIntegrationTests {
             Spice86DependencyInjection spice86 = new Spice86Creator(
                 binName: programPath,
                 enablePit: true,
-                recordData: false,
                 maxCycles: 300000,
                 installInterruptVectors: true,
                 enableA20Gate: false,
