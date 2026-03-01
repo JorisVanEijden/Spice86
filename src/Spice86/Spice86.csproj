@@ -17,14 +17,11 @@
         </EnvironmentVariables>
     </PropertyGroup>
     <ItemGroup>
-        <Content Include="libportaudio.dll">
-            <PackagePath>lib\net10.0\libportaudio.dll</PackagePath>
-            <CopyToOutputDirectory>Always</CopyToOutputDirectory>
-            <Pack>True</Pack>
-        </Content>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
     <!-- Package references -->
     <ItemGroup>
+        <PackageReference Include="ModelContextProtocol.AspNetCore" />
         <PackageReference Include="Avalonia" />
         <PackageReference Include="Avalonia.Controls.DataGrid" />
         <PackageReference Include="Avalonia.Desktop" />

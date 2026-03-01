@@ -87,7 +87,12 @@ public sealed class McpStdioTransport {
                 messageBuffer.Clear();
 
                 try {
-                    string responseJson = _mcpServer.HandleRequest(requestJson);
+                    string? responseJson = _mcpServer.HandleRequest(requestJson);
+
+                    if (responseJson == null) {
+                        // Notification — no response per JSON-RPC 2.0 spec
+                        continue;
+                    }
 
                     _outputWriter.WriteLine(responseJson);
                     _outputWriter.Flush();

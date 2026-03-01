@@ -15,13 +15,11 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using System.Runtime.CompilerServices;
 
 using Spice86.Core.Emulator.Devices.Video;
 using Spice86.Core.Emulator.IOPorts;
 using Spice86.Core.Emulator.InterruptHandlers.Dos.Ems;
 using Spice86.Core.Emulator.InterruptHandlers.Dos.Xms;
-using Spice86.Core.Emulator.Mcp.Request;
 using Spice86.Core.Emulator.Mcp.Response;
 using Spice86.Core.Emulator.Mcp.Schema;
 
@@ -197,7 +195,7 @@ public sealed class McpServer : IMcpServer {
     }
 
     /// <inheritdoc />
-    public string HandleRequest(string requestJson) {
+    public string? HandleRequest(string requestJson) {
         JsonDocument document;
         try {
             document = JsonDocument.Parse(requestJson);
@@ -223,11 +221,20 @@ public sealed class McpServer : IMcpServer {
             switch (method) {
                 case "initialize":
                     return HandleInitialize(idElement);
+                case "notifications/initialized":
+                    // Notification — no response per JSON-RPC 2.0 spec
+                    return null;
+                case "ping":
+                    return CreateSuccessResponse(idElement, new object());
                 case "tools/list":
                     return HandleToolsList(idElement);
                 case "tools/call":
                     return HandleToolCall(root, idElement);
                 default:
+                    // Notifications (no id) must not receive a response
+                    if (!idElement.HasValue) {
+                        return null;
+                    }
                     return CreateErrorResponse(idElement, -32601, $"Method not found: {method}");
             }
         }
@@ -252,7 +259,7 @@ public sealed class McpServer : IMcpServer {
 
     private string HandleInitialize(JsonElement? id) {
         InitializeResult response = new InitializeResult {
-            ProtocolVersion = "2025-06-18",
+            ProtocolVersion = "2024-11-05",
             ServerInfo = new Implementation {
                 Name = "Spice86 MCP Server",
                 Version = "1.0.0"
@@ -981,6 +988,7 @@ public sealed class McpServer : IMcpServer {
 
     private void SendBreakpointHitNotification(string id, BreakPoint bp) {
         var notification = new {
+            jsonrpc = "2.0",
             method = "notifications/emulator/breakpoint_hit",
             @params = new {
                 breakpointId = id,
