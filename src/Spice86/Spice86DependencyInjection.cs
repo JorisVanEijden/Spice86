@@ -78,11 +78,6 @@ public class Spice86DependencyInjection : IDisposable {
     /// </summary>
     public IMcpServer McpServer { get; }
 
-    /// <summary>
-    /// Gets the function catalogue that tracks function calls and provides information for debugging.
-    /// </summary>
-    public FunctionCatalogue FunctionCatalogue { get; }
-
     private readonly McpStdioTransport? _mcpStdioTransport;
     private readonly McpHttpHost _mcpHttpTransport;
     private bool _disposed;
