@@ -96,6 +96,16 @@ internal sealed class EmulatorMcpTools {
     }
 
     private CallToolResult ExecuteTool(Func<object> action, [CallerMemberName] string methodName = "") {
+        return ExecuteToolCore(
+            () => Success(action()),
+            methodName);
+    }
+
+    private CallToolResult ExecuteTool(Func<CallToolResult> action, [CallerMemberName] string methodName = "") {
+        return ExecuteToolCore(action, methodName);
+    }
+
+    private CallToolResult ExecuteToolCore(Func<CallToolResult> action, string methodName) {
         MethodInfo? method = typeof(EmulatorMcpTools).GetMethod(methodName, BindingFlags.Instance | BindingFlags.Public);
         if (method == null) {
             return Error($"Unknown MCP tool method: {methodName}");
@@ -118,7 +128,7 @@ internal sealed class EmulatorMcpTools {
                 shouldResumeOnCommandEnd = true;
             }
 
-            return Success(action());
+            return action();
         } catch (ArgumentException ex) {
             return Error(ex.Message);
         } catch (InvalidOperationException ex) {
@@ -1198,83 +1208,68 @@ internal sealed class EmulatorMcpTools {
 
     [McpServerTool(Name = "screenshot", UseStructuredContent = true), Description("Capture a screenshot as PNG. No parameters. Returns base64 image data inline plus metadata (width, height, file path). MCP clients that support images will display it directly.")]
     public CallToolResult TakeScreenshot() {
-        return ExecuteScreenshot();
-    }
-
-    private CallToolResult ExecuteScreenshot() {
-        bool shouldResume = false;
-        try {
-            EnsureToolEnabled("screenshot");
-            if (!_services.PauseHandler.IsPaused) {
-                _services.PauseHandler.RequestPause("to process MCP tool 'screenshot'");
-                if (!WaitUntilPaused(StepCompletionTimeout)) {
-                    return Error("Timed out waiting to pause before taking screenshot");
-                }
-                shouldResume = true;
-            }
-
+        return ExecuteTool(() => {
+            // Capture pixel buffer under lock — minimal critical section
+            int width;
+            int height;
+            byte[] pixelBytes;
             lock (_services.ToolsLock) {
-                int width = _services.VgaRenderer.Width;
-                int height = _services.VgaRenderer.Height;
+                width = _services.VgaRenderer.Width;
+                height = _services.VgaRenderer.Height;
                 uint[] buffer = new uint[width * height];
                 _services.VgaRenderer.Render(buffer);
 
-                byte[] bytes = new byte[buffer.Length * 4];
-                Buffer.BlockCopy(buffer, 0, bytes, 0, bytes.Length);
-
-                Directory.CreateDirectory(ScreenshotDirectory);
-                string fileName = $"spice86-mcp-screenshot-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-{Guid.NewGuid():N}.png";
-                string filePath = Path.Join(ScreenshotDirectory, fileName);
-
-                SKImageInfo imageInfo = new(width, height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
-                using SKBitmap bitmap = new(imageInfo);
-                IntPtr pointer = bitmap.GetPixels();
-                Marshal.Copy(bytes, 0, pointer, bytes.Length);
-
-                using SKImage image = SKImage.FromBitmap(bitmap);
-                using SKData pngData = image.Encode(SKEncodedImageFormat.Png, 100);
-                if (pngData == null) {
-                    return Error("Failed to encode screenshot as PNG.");
-                }
-
-                byte[] pngBytes = pngData.ToArray();
-
-                using (FileStream fileStream = File.Open(filePath, FileMode.Create, FileAccess.Write, FileShare.Read)) {
-                    fileStream.Write(pngBytes, 0, pngBytes.Length);
-                }
-
-                FileInfo fileInfo = new(filePath);
-                Uri fileUri = new(filePath);
-
-                ScreenshotResponse metadata = new() {
-                    Width = width,
-                    Height = height,
-                    Format = "png",
-                    MimeType = "image/png",
-                    FilePath = filePath,
-                    FileUri = fileUri.AbsoluteUri,
-                    FileSizeBytes = fileInfo.Length
-                };
-
-                JsonNode? metadataNode = JsonSerializer.SerializeToNode(metadata, typeof(ScreenshotResponse), SerializerOptions);
-
-                return new CallToolResult {
-                    Content = [
-                        new ImageContentBlock {
-                            Data = Convert.ToBase64String(pngBytes),
-                            MimeType = "image/png"
-                        }
-                    ],
-                    StructuredContent = metadataNode as JsonObject
-                };
+                pixelBytes = new byte[buffer.Length * 4];
+                Buffer.BlockCopy(buffer, 0, pixelBytes, 0, pixelBytes.Length);
             }
-        } catch (Exception ex) when (ex is ArgumentException or InvalidOperationException or FormatException) {
-            return Error(ex.Message);
-        } finally {
-            if (shouldResume) {
-                _services.PauseHandler.Resume();
+
+            // PNG encoding, base64 conversion, and file I/O outside the lock
+            Directory.CreateDirectory(ScreenshotDirectory);
+            string fileName = $"spice86-mcp-screenshot-{DateTime.UtcNow:yyyyMMdd-HHmmssfff}-{Guid.NewGuid():N}.png";
+            string filePath = Path.Join(ScreenshotDirectory, fileName);
+
+            SKImageInfo imageInfo = new(width, height, SKColorType.Bgra8888, SKAlphaType.Unpremul);
+            using SKBitmap bitmap = new(imageInfo);
+            IntPtr pointer = bitmap.GetPixels();
+            Marshal.Copy(pixelBytes, 0, pointer, pixelBytes.Length);
+
+            using SKImage image = SKImage.FromBitmap(bitmap);
+            using SKData pngData = image.Encode(SKEncodedImageFormat.Png, 100);
+            if (pngData == null) {
+                throw new InvalidOperationException("Failed to encode screenshot as PNG.");
             }
-        }
+
+            byte[] pngBytes = pngData.ToArray();
+
+            using (FileStream fileStream = File.Open(filePath, FileMode.Create, FileAccess.Write, FileShare.Read)) {
+                fileStream.Write(pngBytes, 0, pngBytes.Length);
+            }
+
+            FileInfo fileInfo = new(filePath);
+            Uri fileUri = new(filePath);
+
+            ScreenshotResponse metadata = new() {
+                Width = width,
+                Height = height,
+                Format = "png",
+                MimeType = "image/png",
+                FilePath = filePath,
+                FileUri = fileUri.AbsoluteUri,
+                FileSizeBytes = fileInfo.Length
+            };
+
+            JsonNode? metadataNode = JsonSerializer.SerializeToNode(metadata, typeof(ScreenshotResponse), SerializerOptions);
+
+            return new CallToolResult {
+                Content = [
+                    new ImageContentBlock {
+                        Data = Convert.ToBase64String(pngBytes),
+                        MimeType = "image/png"
+                    }
+                ],
+                StructuredContent = metadataNode as JsonObject
+            };
+        });
     }
 
     [McpManualControl]

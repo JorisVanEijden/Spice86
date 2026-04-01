@@ -1016,9 +1016,22 @@ public class McpServerToolStateTests {
         McpJsonRpcAssertions.TryGetPropertyIgnoreCase(McpJsonRpcAssertions.GetStructuredContent(McpJsonRpcAssertions.GetJsonRpcResult(readCfg)), "currentContextDepth", out JsonElement _).Should().BeTrue();
         McpJsonRpcAssertions.TryGetPropertyIgnoreCase(McpJsonRpcAssertions.GetStructuredContent(McpJsonRpcAssertions.GetJsonRpcResult(listFuncs)), "functions", out JsonElement _).Should().BeTrue();
         McpJsonRpcAssertions.TryGetPropertyIgnoreCase(McpJsonRpcAssertions.GetStructuredContent(McpJsonRpcAssertions.GetJsonRpcResult(video)), "width", out JsonElement _).Should().BeTrue();
-        JsonElement shot = McpJsonRpcAssertions.GetStructuredContent(McpJsonRpcAssertions.GetJsonRpcResult(screenshot));
+        JsonElement shotResult = McpJsonRpcAssertions.GetJsonRpcResult(screenshot);
+        JsonElement shot = McpJsonRpcAssertions.GetStructuredContent(shotResult);
         McpJsonRpcAssertions.TryGetPropertyIgnoreCase(shot, "format", out JsonElement format).Should().BeTrue();
         format.GetString().Should().Be("png");
+
+        // Validate inline image content block
+        shotResult.TryGetProperty("content", out JsonElement shotContent).Should().BeTrue("screenshot should return content array");
+        shotContent.ValueKind.Should().Be(JsonValueKind.Array);
+        shotContent.GetArrayLength().Should().BeGreaterThan(0);
+        JsonElement imageBlock = shotContent[0];
+        imageBlock.TryGetProperty("type", out JsonElement imageType).Should().BeTrue();
+        imageType.GetString().Should().Be("image");
+        imageBlock.TryGetProperty("mimeType", out JsonElement mimeType).Should().BeTrue();
+        mimeType.GetString().Should().Be("image/png");
+        imageBlock.TryGetProperty("data", out JsonElement imageData).Should().BeTrue();
+        imageData.GetString().Should().NotBeNullOrEmpty("screenshot should contain base64 image data");
     }
 
     private static async Task AssertPauseResumeIoToolsAsync(McpIntegrationContext context) {
