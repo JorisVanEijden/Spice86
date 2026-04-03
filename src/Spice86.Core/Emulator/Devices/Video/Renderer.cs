@@ -1,5 +1,7 @@
 namespace Spice86.Core.Emulator.Devices.Video;
 
+using System.Diagnostics;
+
 using Spice86.Core.Emulator.Devices.Video.Registers.CrtController;
 using Spice86.Core.Emulator.Devices.Video.Registers.Graphics;
 using Spice86.Core.Emulator.Memory;
@@ -61,9 +63,11 @@ public class Renderer : IVgaRenderer {
                 return;
             }
 
-            // Some timing helpers.
+            // Some timing helpers. Use Stopwatch directly for microsecond-accurate scanline timing,
+            // since the shared EmulatedClock caches values too aggressively for per-scanline use.
             double horizontalLineDurationMs = 1000.0 / 31469.0; // Duration of one horizontal line in ms.
             SpinWait waitSpinner = new SpinWait();
+            long ticksPerMs = Stopwatch.Frequency / 1000;
             double frameStartMs = _clock.ElapsedTimeMs;
 
             // I _think_ changes to these are ignored during the frame, so we latch them here.
@@ -109,7 +113,7 @@ public class Renderer : IVgaRenderer {
                         int memoryAddressCounter = rowMemoryAddressCounter;
                         destinationAddress = destinationAddressLatch;
 
-                        double msAtStartOfRow = _clock.ElapsedTimeMs;
+                        long ticksAtStartOfRow = Stopwatch.GetTimestamp();
                         bool horizontalBlanking = true;
 
                         ///////////////////////////
@@ -161,7 +165,8 @@ public class Renderer : IVgaRenderer {
 
                         // We wait at the end of each line to create the correct horizontal timing of 31.46875 kHz
                         // This allows programs running in the CPU thread to detect the horizontal retrace.
-                        while (!_clock.IsPaused && _clock.ElapsedTimeMs - msAtStartOfRow < horizontalLineDurationMs) {
+                        long targetTicks = (long)(horizontalLineDurationMs * ticksPerMs);
+                        while (!_clock.IsPaused && Stopwatch.GetTimestamp() - ticksAtStartOfRow < targetTicks) {
                             waitSpinner.SpinOnce(-1);
                         }
                         // If the VerticalTiming is halved, we only increase the line counter every other scanline.

@@ -19,12 +19,15 @@ public class EmulatedClock : ClockBase {
     public override double ElapsedTimeMs {
         get {
             // Stopwatch.GetTimestamp can be slow, so we only query it periodically.
-            if (_ticks++ % 100 != 0) {
-                return _cachedTime;
+            // Interlocked ensures correctness when called from multiple threads
+            // (CPU thread and VGA renderer thread).
+            if (Interlocked.Increment(ref _ticks) % 100 != 0) {
+                return Volatile.Read(ref _cachedTime);
             }
 
-            _cachedTime = _stopwatch.Elapsed.TotalMilliseconds;
-            return _cachedTime;
+            double time = _stopwatch.Elapsed.TotalMilliseconds;
+            Volatile.Write(ref _cachedTime, time);
+            return time;
         }
     }
 

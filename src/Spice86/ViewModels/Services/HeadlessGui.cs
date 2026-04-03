@@ -1,4 +1,4 @@
-﻿namespace Spice86.ViewModels.Services;
+namespace Spice86.ViewModels.Services;
 
 using Spice86.Shared.Emulator.Keyboard;
 using Spice86.Shared.Emulator.Mouse;
@@ -8,14 +8,12 @@ using Spice86.Shared.Interfaces;
 /// <inheritdoc cref="IGuiVideoPresentation" />
 public sealed class HeadlessGui : IGuiVideoPresentation, IGuiMouseEvents,
     IGuiKeyboardEvents, IDisposable {
-    private const double ScreenRefreshHz = 60;
-    private static readonly TimeSpan RefreshInterval = TimeSpan.FromMilliseconds(1000.0 / ScreenRefreshHz);
-    private readonly SemaphoreSlim? _drawingSemaphoreSlim = new(1, 1);
+    private readonly object _drawingLock = new();
 
     private bool _disposed;
 
-    private Timer? _drawTimer;
-    private bool _isAppClosing;
+    private Thread? _drawThread;
+    private volatile bool _isAppClosing;
     private bool _isSettingResolution;
 
     private byte[]? _pixelBuffer;
@@ -71,17 +69,12 @@ public sealed class HeadlessGui : IGuiVideoPresentation, IGuiMouseEvents,
 
                 int bufferSize = width * height * 4;
 
-                _drawingSemaphoreSlim?.Wait();
-                try {
+                lock (_drawingLock) {
                     if (_pixelBuffer == null || _pixelBuffer.Length != bufferSize) {
                         _pixelBuffer = new byte[bufferSize];
                     }
 
                     Array.Clear(_pixelBuffer, 0, _pixelBuffer.Length);
-                } finally {
-                    if (!_disposed) {
-                        _drawingSemaphoreSlim?.Release();
-                    }
                 }
             }
         } finally {
@@ -101,11 +94,21 @@ public sealed class HeadlessGui : IGuiVideoPresentation, IGuiMouseEvents,
         }
 
         _renderingTimerInitialized = true;
-        _drawTimer = new Timer(DrawScreenCallback, null, RefreshInterval, RefreshInterval);
+        _drawThread = new Thread(DrawLoop) {
+            Name = "VGA Refresh",
+            IsBackground = true
+        };
+        _drawThread.Start();
     }
 
-    private void DrawScreenCallback(object? state) {
-        DrawScreen();
+    private void DrawLoop() {
+        try {
+            while (!_disposed && !_isAppClosing) {
+                DrawScreen();
+            }
+        } catch (Exception e) {
+            Console.Error.WriteLine($"[HeadlessGui] VGA thread crashed: {e}");
+        }
     }
 
     private unsafe void DrawScreen() {
@@ -114,18 +117,13 @@ public sealed class HeadlessGui : IGuiVideoPresentation, IGuiMouseEvents,
             return;
         }
 
-        _drawingSemaphoreSlim?.Wait();
-        try {
+        lock (_drawingLock) {
             fixed (byte* bufferPtr = pixelBuffer) {
                 int rowBytes = Width * 4; // 4 bytes per pixel (BGRA)
                 int length = rowBytes * Height / 4;
 
                 var uiRenderEventArgs = new UIRenderEventArgs((IntPtr)bufferPtr, length);
                 RenderScreen.Invoke(this, uiRenderEventArgs);
-            }
-        } finally {
-            if (!_disposed) {
-                _drawingSemaphoreSlim?.Release();
             }
         }
     }
@@ -140,21 +138,13 @@ public sealed class HeadlessGui : IGuiVideoPresentation, IGuiMouseEvents,
             return;
         }
 
-        // Stop the timer first to prevent any new callbacks
-        _drawTimer?.Dispose();
+        // Signal the draw thread to stop (it checks _disposed in its loop)
+        // and wait for it to finish
+        _drawThread?.Join(TimeSpan.FromMilliseconds(200));
 
         // Wait for any ongoing draw operation to complete
-        // This prevents a race condition where the timer callback
-        // is in the middle of rendering when we dispose resources
-        try {
-            if (_drawingSemaphoreSlim?.Wait(TimeSpan.FromMilliseconds(100)) == true) {
-                _drawingSemaphoreSlim?.Release();
-            }
-        } catch (ObjectDisposedException) {
-            // Semaphore was already disposed, which is fine
+        lock (_drawingLock) {
+            _pixelBuffer = null;
         }
-
-        _pixelBuffer = null;
-        _drawingSemaphoreSlim?.Dispose();
     }
 }

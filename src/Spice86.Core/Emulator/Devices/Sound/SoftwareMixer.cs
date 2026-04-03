@@ -98,8 +98,14 @@ public sealed class SoftwareMixer : IDisposable {
         _pauseHandler = pauseHandler ?? throw new ArgumentNullException(nameof(pauseHandler));
         _audioPlayerFactory = new AudioPlayerFactory(audioEngine);
 
-        // Create the audio player with our sample rate and blocksize
-        _audioPlayer = _audioPlayerFactory.CreatePlayer(_sampleRateHz, _blocksize, _prebufferMs, DefaultAllowNegotiate);
+        // Create the audio player with our sample rate and blocksize.
+        // Fall back to the dummy backend when native audio libraries (e.g. ALSA) are missing.
+        try {
+            _audioPlayer = _audioPlayerFactory.CreatePlayer(_sampleRateHz, _blocksize, _prebufferMs, DefaultAllowNegotiate);
+        } catch (DllNotFoundException) {
+            _audioPlayer = new AudioPlayerFactory(AudioEngine.Dummy)
+                .CreatePlayer(_sampleRateHz, _blocksize, _prebufferMs, DefaultAllowNegotiate);
+        }
         if (_audioPlayer.Format.SampleRate > 0) {
             _sampleRateHz = _audioPlayer.Format.SampleRate;
         }
