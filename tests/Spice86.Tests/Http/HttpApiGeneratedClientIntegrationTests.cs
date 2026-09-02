@@ -11,7 +11,7 @@ using NSubstitute;
 using Xunit;
 
 public sealed partial class HttpApiGeneratedClientIntegrationTests : IClassFixture<HttpApiServerFixture> {
-    private const string KiotaToolVersion = "1.30.0";
+    private const string KiotaToolVersion = "1.34.0";
     private static readonly TimeSpan CommandTimeout = TimeSpan.FromMinutes(3);
     private readonly HttpApiServerFixture _fixture;
 
@@ -56,7 +56,7 @@ public sealed partial class HttpApiGeneratedClientIntegrationTests : IClassFixtu
     private static TestWorkspace CreateTestWorkspace(string extension) {
         string baseTempPath = Path.GetTempPath();
         string rootPath = Path.Join(baseTempPath, "Spice86.Tests", "HttpApiGeneratedClient", Guid.NewGuid().ToString("N"));
-        string toolPath = Path.Join(baseTempPath, "Spice86.Tests", "Tools", "Kiota");
+        string toolPath = Path.Join(rootPath, "Tools", "Kiota");
         Directory.CreateDirectory(rootPath);
         Directory.CreateDirectory(toolPath);
         return new TestWorkspace(

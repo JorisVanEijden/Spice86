@@ -1,6 +1,6 @@
 ﻿namespace Spice86.Core.Emulator.ReverseEngineer;
 
-using Serilog.Events;
+using Microsoft.Extensions.Logging;
 
 using Spice86.Core.Emulator.CPU;
 using Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction;
@@ -16,7 +16,6 @@ using Spice86.Core.Emulator.VM.Breakpoint;
 using Spice86.Shared.Emulator.Errors;
 using Spice86.Shared.Emulator.Memory;
 using Spice86.Shared.Emulator.VM.Breakpoint;
-using Spice86.Shared.Interfaces;
 using Spice86.Shared.Utils;
 
 using System.Collections.Immutable;
@@ -49,7 +48,7 @@ public class CSharpOverrideHelper {
     /// <summary>
     /// The service used for logging.
     /// </summary>
-    protected readonly ILoggerService _loggerService;
+    protected readonly ILogger _loggerService;
 
     /// <summary>
     /// The Spice86 configuration
@@ -80,6 +79,36 @@ public class CSharpOverrideHelper {
     /// Gets the 32-bit indexer of the memory bus.
     /// </summary>
     public UInt32Indexer UInt32 => Memory.UInt32;
+
+    /// <summary>
+    /// Gets the big-endian 16-bit indexer of the memory bus.
+    /// </summary>
+    public UInt16BigEndianIndexer UInt16BigEndian => Memory.UInt16BigEndian;
+
+    /// <summary>
+    /// Gets the signed 8-bit indexer of the memory bus.
+    /// </summary>
+    public Int8Indexer Int8 => Memory.Int8;
+
+    /// <summary>
+    /// Gets the signed 16-bit indexer of the memory bus.
+    /// </summary>
+    public Int16Indexer Int16 => Memory.Int16;
+
+    /// <summary>
+    /// Gets the signed 32-bit indexer of the memory bus.
+    /// </summary>
+    public Int32Indexer Int32 => Memory.Int32;
+
+    /// <summary>
+    /// Gets the 16-bit segmented address indexer of the memory bus.
+    /// </summary>
+    public SegmentedAddress16Indexer SegmentedAddress16 => Memory.SegmentedAddress16;
+
+    /// <summary>
+    /// Gets the 32-bit segmented address indexer of the memory bus.
+    /// </summary>
+    public SegmentedAddress32Indexer SegmentedAddress32 => Memory.SegmentedAddress32;
 
     /// <summary>
     /// Gets the stack of the CPU.
@@ -340,7 +369,7 @@ public class CSharpOverrideHelper {
     /// Gets or sets the <see cref="JumpDispatcher"/>
     /// </summary>
     public JumpDispatcher JumpDispatcher { get; set; }
-    
+
     public ReturnOperationsHelper ReturnOperationsHelper { get; }
 
     /// <summary>
@@ -351,7 +380,7 @@ public class CSharpOverrideHelper {
     /// <param name="loggerService">The logger service implementation.</param>
     /// <param name="configuration">The emulator configuration.</param>
     public CSharpOverrideHelper(IDictionary<SegmentedAddress, FunctionInformation> functionInformations,
-        Machine machine, ILoggerService loggerService, Configuration configuration) {
+        Machine machine, ILogger loggerService, Configuration configuration) {
         Machine = machine;
         Memory = machine.Memory;
         _dualPic = machine.DualPic;
@@ -441,8 +470,8 @@ public class CSharpOverrideHelper {
 
             string error =
                 $"There is already a function overriden at address {address} named {existingFunctionInformation.Name}. Please check your mappings for duplicates.";
-            if (_loggerService.IsEnabled(LogEventLevel.Error)) {
-                _loggerService.Error(
+            if (_loggerService.IsEnabled(LogLevel.Error)) {
+                _loggerService.LogError(
                     "There is already a function defined at address {Address} named {ExistingFunctionInformationName} but you are trying to redefine it. Please check your mappings for duplicates",
                     address, existingFunctionInformation.Name);
             }
@@ -473,7 +502,7 @@ public class CSharpOverrideHelper {
     public Action FarRet(ushort numberOfBytesToPop = 0) {
         return () => ReturnOperationsHelper.FarRet16(numberOfBytesToPop);
     }
-    
+
     public Action FarRet32(ushort numberOfBytesToPop = 0) {
         return () => ReturnOperationsHelper.FarRet32(numberOfBytesToPop);
     }
@@ -503,7 +532,7 @@ public class CSharpOverrideHelper {
     public Action NearRet(ushort numberOfBytesToPop = 0) {
         return () => ReturnOperationsHelper.NearRet16(numberOfBytesToPop);
     }
-    
+
     public Action NearRet32(ushort numberOfBytesToPop = 0) {
         return () => ReturnOperationsHelper.NearRet32(numberOfBytesToPop);
     }
@@ -674,7 +703,7 @@ public class CSharpOverrideHelper {
             message += " Found " + actualTarget.Name + " there.";
             if (actualTarget.FunctionOverride != null) {
                 message += " Calling it.";
-                _loggerService.Warning("{Message}", message);
+                _loggerService.LogWarning("{Message}", message);
                 ExecuteCall(actualTarget.FunctionOverride, () => actualTarget.FunctionOverride.Invoke(0).Invoke());
                 actualStackAddress = State.StackPhysicalAddress;
                 actualReturnCs = State.CS;
@@ -796,8 +825,8 @@ public class CSharpOverrideHelper {
     public UnrecoverableException FailAsUntested(string message) {
         string error =
             $"Untested code reached, please tell us how to reach this state. Here is the message: {message}. Here is the Machine stack: {State}";
-        if (_loggerService.IsEnabled(LogEventLevel.Error)) {
-            _loggerService.Error("{Error}", error);
+        if (_loggerService.IsEnabled(LogLevel.Error)) {
+            _loggerService.LogError("{Error}", error);
         }
 
         return new UnrecoverableException(error);
@@ -819,6 +848,26 @@ public class CSharpOverrideHelper {
         uint linearAddress = MemoryUtils.ToPhysicalAddress(segment, offset);
         IList<byte> bytes = Memory.GetSlice((int)linearAddress, signature.Length);
         return new Signature(ImmutableList.CreateRange(signature)).ListEquivalent(bytes);
+    }
+
+    /// <summary>
+    /// Verifies that a single speculative instruction at the given segmented address still matches the
+    /// signature decoded at exploration time. The generated code calls this immediately before the
+    /// instruction's body so that self-modifying code performed by an earlier instruction in the same block
+    /// is detected before the modified instruction's decode-time-baked body executes. If memory no longer
+    /// matches, the speculative decode was wrong and execution falls back to <see cref="FailAsUntested"/>.
+    /// Reads via raw <c>segment*16+offset</c> (no MMU translation) to stay identical to the interpreter oracle that recorded the signature; must change in lockstep with it, never alone.
+    /// </summary>
+    /// <param name="segment">The segment of the speculative instruction.</param>
+    /// <param name="offset">The offset of the speculative instruction.</param>
+    /// <param name="runSignature">The signature of the speculative instruction; null entries are wildcards for fields the decoder reads from memory at execution time.</param>
+    /// <exception cref="UnrecoverableException">Thrown when memory at the instruction address does not match the expected signature.</exception>
+    public void VerifySpeculativeEntryOrFail(ushort segment, ushort offset, byte?[] runSignature) {
+        uint linearAddress = MemoryUtils.ToPhysicalAddress(segment, offset);
+        IList<byte> bytes = Memory.GetSlice((int)linearAddress, runSignature.Length);
+        if (!new Signature(ImmutableList.CreateRange(runSignature)).ListEquivalent(bytes)) {
+            throw FailAsUntested($"Speculative code at {segment:X4}:{offset:X4} no longer matches memory");
+        }
     }
 
     /// <summary>
@@ -878,10 +927,10 @@ public class CSharpOverrideHelper {
             }
             int callback = i;
             DefineFunction(handlerAddress.Segment, handlerAddress.Offset, (offset) => {
-                    _callbackHandler.RunFromOverriden(callback);
+                _callbackHandler.RunFromOverriden(callback);
 
-                    return InterruptRet();
-                }, false, $"provided_interrupt_handler_{ConvertUtils.ToHex(i)}");
+                return InterruptRet();
+            }, false, $"provided_interrupt_handler_{ConvertUtils.ToHex(i)}");
         }
     }
 
@@ -896,7 +945,7 @@ public class CSharpOverrideHelper {
     /// </summary>
     /// <exception cref="HaltRequestedException">The exception throw in order to exit the program.</exception>
     protected void Exit() {
-        _loggerService.Verbose("Program requested exit. Terminating now");
+        _loggerService.LogTrace("Program requested exit. Terminating now");
 
         throw new HaltRequestedException();
     }

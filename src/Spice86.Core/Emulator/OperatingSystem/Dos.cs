@@ -1,7 +1,8 @@
+using Microsoft.Extensions.Logging;
 namespace Spice86.Core.Emulator.OperatingSystem;
 
-using Serilog.Events;
 
+using Spice86.Core.CLI.RuntimeOptions;
 using Spice86.Core.Emulator.CPU;
 using Spice86.Core.Emulator.Devices.ExternalInput;
 using Spice86.Core.Emulator.Devices.Video;
@@ -42,7 +43,7 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
     private readonly IVgaFunctionality _vgaFunctionality;
     private readonly BiosKeyboardBuffer _biosKeyboardBuffer;
     private readonly IMemory _memory;
-    private readonly ILoggerService _loggerService;
+    private readonly ILogger _loggerService;
     private readonly Mscdex _mscdex;
     private readonly ISoundChannelCreator _channelCreator;
     private readonly IDriveActivityNotifier _activityNotifier;
@@ -171,7 +172,7 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
     /// <summary>
     /// Initializes a new instance.
     /// </summary>
-    /// <param name="configuration">An object that describes what to run and how.</param>
+    /// <param name="options">DOS runtime options projected from the command-line configuration.</param>
     /// <param name="memory">The emulator memory.</param>
     /// <param name="functionHandlerProvider">Provides current call flow handler to peek call stack.</param>
     /// <param name="stack">The CPU stack.</param>
@@ -184,7 +185,7 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
     /// <param name="ioPortDispatcher">The I/O port dispatcher for accessing hardware ports.</param>
     /// <param name="loggerService">The logger service implementation.</param>
     /// <param name="floppyDiskTimingService">Floppy I/O timing service used by absolute floppy image reads and writes.</param>
-    /// <param name="configuration">An object that describes what to run and how.</param>
+    /// <param name="options">DOS runtime options projected from the command-line configuration.</param>
     /// <param name="memory">The emulator memory.</param>
     /// <param name="functionHandlerProvider">Provides current call flow handler to peek call stack.</param>
     /// <param name="stack">The CPU stack.</param>
@@ -199,11 +200,11 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
     /// <param name="channelCreator">The sound channel creator, used to stream CD audio when an image is mounted.</param>
     /// <param name="activityNotifier">Notifier that surfaces per-drive read/write activity to the UI.</param>
     /// <param name="xms">Optional XMS manager to expose through DOS.</param>
-    public Dos(Configuration configuration, IMemory memory,
+    public Dos(DosOptions options, IMemory memory,
         IFunctionHandlerProvider functionHandlerProvider, Stack stack, State state,
         BiosKeyboardBuffer biosKeyboardBuffer, KeyboardInt16Handler keyboardInt16Handler,
         BiosDataArea biosDataArea, IVgaFunctionality vgaFunctionality,
-        IDictionary<string, string> envVars, IOPortDispatcher ioPortDispatcher, ILoggerService loggerService,
+        IDictionary<string, string> envVars, IOPortDispatcher ioPortDispatcher, ILogger loggerService,
         FloppyDiskTimingService floppyDiskTimingService,
         ISoundChannelCreator channelCreator,
         IDriveActivityNotifier activityNotifier,
@@ -221,10 +222,10 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
         ushort mediaIdSegment = DosTables.ReserveDosPrivateSegment((ushort)DosMediaIdTable.TableSizeInParagraphs);
         DosMediaIdTable mediaIdTable = new(memory,
             MemoryUtils.ToPhysicalAddress(mediaIdSegment, DosMediaIdTable.EntryBaseOffsetInSegment), mediaIdSegment);
-        DosDriveManager = new(_loggerService, configuration.CDrive, configuration.Exe, mediaIdTable);
+        DosDriveManager = new(_loggerService, options.CDrive, options.Exe, mediaIdTable);
 
         VirtualFileBase[] dosDevices = AddDefaultDevices(state, keyboardInt16Handler);
-        DosSysVars = new DosSysVars(configuration, (NullDevice)dosDevices[0], memory,
+        DosSysVars = new DosSysVars(options, (NullDevice)dosDevices[0], memory,
             MemoryUtils.ToPhysicalAddress(DosSysVars.Segment, 0x0));
 
         // Item 1 of devices array
@@ -243,7 +244,7 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
             _loggerService, Devices);
 
         // Calculate initial PSP segment from configuration (PSP is 16 paragraphs before entry point)
-        ushort initialPspSegment = (ushort)(configuration.ProgramEntryPointSegment - 0x10);
+        ushort initialPspSegment = (ushort)(options.ProgramEntryPointSegment - 0x10);
 
         // Initialize the SDA with the initial PSP segment
         DosSwappableDataArea.CurrentProgramSegmentPrefix = initialPspSegment;
@@ -255,7 +256,7 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
 
         FcbManager = new(_memory, FileManager, DosDriveManager, _loggerService);
         IBatchDisplayCommandHandler batchDisplayCommandHandler = new DosBatchDisplayCommandHandler(_vgaFunctionality);
-        _mscdex = new Mscdex(state, memory, loggerService, _activityNotifier);
+        _mscdex = new Mscdex(state, memory, _loggerService, _activityNotifier);
         _driveStatusProvider = new DosDriveStatusProvider(DosDriveManager, _mscdex);
         ProcessManager = new(_memory, stack, state, MemoryManager, FileManager, DosDriveManager, _driveStatusProvider, _mscdex, channelCreator, _activityNotifier, batchDisplayCommandHandler, envVars, _loggerService);
         DosInt22Handler = new DosInt22Handler(_memory, functionHandlerProvider, stack, state, ProcessManager, _loggerService);
@@ -278,20 +279,20 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
 
         InitializeBootstrapZDrive();
 
-        if (configuration.InitializeDOS is false) {
+        if (options.DosRuntimeState.InstallDosServices is false) {
             return;
         }
-        if (_loggerService.IsEnabled(LogEventLevel.Verbose)) {
-            _loggerService.Verbose("Initializing DOS");
+        if (_loggerService.IsEnabled(LogLevel.Trace)) {
+            _loggerService.LogTrace("Initializing DOS");
         }
         OpenDefaultFileHandles(dosDevices);
 
-        if (configuration.Xms is not false && xms is not null) {
+        if (options.Xms is not false && xms is not null) {
             Xms = xms;
             AddDevice(xms, ExtendedMemoryManager.DosDeviceSegment, 0);
         }
 
-        if (configuration.Ems is not false) {
+        if (options.Ems is not false) {
             Ems = new(_memory, functionHandlerProvider, stack, state, _loggerService);
             AddDevice(Ems.AsCharacterDevice(), ExpandedMemoryManager.DosDeviceSegment, 0);
         }
@@ -421,8 +422,8 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
         DosDriveManager.SwapFloppyDiscs();
         foreach (MscdexDriveEntry entry in _mscdex.Drives) {
             entry.Drive.SwapToNextDisc();
-            if (_loggerService.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                _loggerService.Information("MOUNT: Swapping drive {Drive}: to image {Image}", entry.DriveLetter, entry.Drive.Image.ImagePath);
+            if (_loggerService.IsEnabled(LogLevel.Information)) {
+                _loggerService.LogInformation("MOUNT: Swapping drive {Drive}: to image {Image}", entry.DriveLetter, entry.Drive.Image.ImagePath);
             }
         }
     }
@@ -432,16 +433,16 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
         char upper = char.ToUpperInvariant(driveLetter);
         if (DosDriveManager.TryGetFloppyDrive(upper, out FloppyDiskDrive? floppy)) {
             floppy.SwapToIndex(imageIndex);
-            if (_loggerService.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                _loggerService.Information("MOUNT: Drive {Drive}: switched to image {Image}", upper, floppy.ImagePath);
+            if (_loggerService.IsEnabled(LogLevel.Information)) {
+                _loggerService.LogInformation("MOUNT: Drive {Drive}: switched to image {Image}", upper, floppy.ImagePath);
             }
             return;
         }
         foreach (MscdexDriveEntry entry in _mscdex.Drives) {
             if (char.ToUpperInvariant(entry.DriveLetter) == upper) {
                 entry.Drive.SwapToIndex(imageIndex);
-                if (_loggerService.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-                    _loggerService.Information("MOUNT: Drive {Drive}: switched to image {Image}", upper, entry.Drive.Image.ImagePath);
+                if (_loggerService.IsEnabled(LogLevel.Information)) {
+                    _loggerService.LogInformation("MOUNT: Drive {Drive}: switched to image {Image}", upper, entry.Drive.Image.ImagePath);
                 }
                 return;
             }
@@ -455,8 +456,8 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
         }
 
         DosDriveManager.MountFloppyFolder(driveLetter, hostPath);
-        if (_loggerService.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _loggerService.Information("MOUNT: Drive {Drive}: is now backed by folder {Path}", char.ToUpperInvariant(driveLetter), hostPath);
+        if (_loggerService.IsEnabled(LogLevel.Information)) {
+            _loggerService.LogInformation("MOUNT: Drive {Drive}: is now backed by folder {Path}", char.ToUpperInvariant(driveLetter), hostPath);
         }
     }
 
@@ -484,8 +485,8 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
         MscdexDriveEntry entry = new MscdexDriveEntry(upper, driveIndex, drive);
         _mscdex.AddDrive(entry);
         DosDriveManager.RegisterCdRomDriveLetter(upper, hostPath, volumeLabel);
-        if (_loggerService.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _loggerService.Information("MOUNT: Drive {Drive}: is now backed by folder {Path}", upper, hostPath);
+        if (_loggerService.IsEnabled(LogLevel.Information)) {
+            _loggerService.LogInformation("MOUNT: Drive {Drive}: is now backed by folder {Path}", upper, hostPath);
         }
     }
 
@@ -503,8 +504,8 @@ public sealed class Dos : IDriveStatusProvider, IDiscSwapper, IDriveMountService
         _mscdex.AddDrive(entry);
         string volumeLabel = image.PrimaryVolume.VolumeIdentifier ?? string.Empty;
         DosDriveManager.RegisterCdRomDriveLetter(upper, string.Empty, volumeLabel);
-        if (_loggerService.IsEnabled(Serilog.Events.LogEventLevel.Information)) {
-            _loggerService.Information("IMGMOUNT: Mounted image {Image} on drive {Drive}:", imagePath, upper);
+        if (_loggerService.IsEnabled(LogLevel.Information)) {
+            _loggerService.LogInformation("IMGMOUNT: Mounted image {Image} on drive {Drive}:", imagePath, upper);
         }
     }
 

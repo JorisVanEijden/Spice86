@@ -1,5 +1,7 @@
 namespace Spice86.Tests.CfgCpu;
 
+using Microsoft.Extensions.Logging;
+
 using NSubstitute;
 
 using Spice86.Core.CLI;
@@ -14,8 +16,8 @@ using Spice86.Core.Emulator.ReverseEngineer.Graph;
 using Spice86.Core.Emulator.StateSerialization;
 using Spice86.Core.Emulator.StateSerialization.CfgReload;
 using Spice86.Core.Emulator.VM;
+using Spice86.Logging;
 using Spice86.Shared.Emulator.Memory;
-using Spice86.Shared.Interfaces;
 using Spice86.Tests.Utility;
 
 using System.Text.Json;
@@ -96,7 +98,7 @@ public class CfgGraphReloadTest {
 
         // Reload into a fresh machine (no execution) and export.
         string reloadedJson;
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         using (Spice86Creator creator = CreateCreator(binName))
         using (Spice86DependencyInjection di = creator.Create()) {
             using CfgNodeExecutionCompiler compiler = NewCompiler(loggerService);
@@ -121,17 +123,47 @@ public class CfgGraphReloadTest {
         // restore: typed instruction edges, per-node MaxSucc, selector dispatch edges and ids.
         CfgReloadDump original = CaptureDump(binName);
 
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         using Spice86Creator creator = CreateCreator(binName);
         using Spice86DependencyInjection di = creator.Create();
         using CfgNodeExecutionCompiler compiler = NewCompiler(loggerService);
         CfgGraphReloader reloader = new(di.Machine.CfgCpu, di.Machine.CpuState, compiler, di.CfgIdAllocator);
         reloader.Reload(original);
 
-        CfgReloadDump reExported = new CfgReloadExporter().Export(di.Machine.CfgCpu.ExecutionContextManager);
+        CfgReloadDump reExported = new CfgReloadExporter().Export(di.Machine.CfgCpu.ExecutionContextManager, null);
         // Records compare structurally, but the array members are reference-typed, so compare the
         // canonical (sorted) JSON the exporter already produces deterministically.
         Assert.Equal(SerializeDump(original), SerializeDump(reExported));
+    }
+
+    [Theory]
+    [MemberData(nameof(RoundTripBins))]
+    public void ReloadRegistersEveryInstructionInTheNodeIndex(string binName) {
+        // The CfgNodeIndex spans ALL nodes, observed and speculative, mirroring the live feeder path
+        // where ParseAndSetAsCurrent calls NodeIndex.Insert for every parsed node (not just
+        // speculative ones). If reload registered only one provenance, the index would be missing
+        // entries; the explorer's convergence check (HasAddress) and the cold-path promote/discard
+        // probe (GetAtAddress) would then mint duplicate nodes or fail to converge onto reloaded code.
+        // Assert the invariant directly: every reconstructed instruction is findable in the index by id.
+        CfgReloadDump original = CaptureDump(binName);
+
+        using LoggerService loggerService = new();
+        using Spice86Creator creator = CreateCreator(binName);
+        using Spice86DependencyInjection di = creator.Create();
+        using CfgNodeExecutionCompiler compiler = NewCompiler(loggerService);
+        CfgGraphReloader reloader = new(di.Machine.CfgCpu, di.Machine.CpuState, compiler, di.CfgIdAllocator);
+        reloader.Reload(original);
+
+        CfgNodeIndex index = di.Machine.CfgCpu.CfgNodeFeeder.NodeIndex;
+        foreach (CfgReloadNodeInfo nodeInfo in original.Nodes) {
+            if (nodeInfo.Type != CfgReloadNodeType.Instruction) {
+                continue;
+            }
+            SegmentedAddress address = ParseAddress(nodeInfo.Addr);
+            bool indexed = index.GetAtAddress(address).Any(node => node.Id == nodeInfo.Id);
+            Assert.True(indexed,
+                $"reloaded instruction id {nodeInfo.Id} at {nodeInfo.Addr} must be registered in the node index");
+        }
     }
 
     [Theory]
@@ -145,7 +177,7 @@ public class CfgGraphReloadTest {
         HashSet<int> expectedIds = new(scaledDump.Nodes.Select(n => n.Id).Concat(scaledDump.Blocks.Select(b => b.Id)));
         int maxId = expectedIds.Count == 0 ? -1 : expectedIds.Max();
 
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         using Spice86Creator creator = CreateCreator(binName);
         using Spice86DependencyInjection di = creator.Create();
         using CfgNodeExecutionCompiler compiler = NewCompiler(loggerService);
@@ -174,7 +206,7 @@ public class CfgGraphReloadTest {
         HashSet<int> reloadedIds = new(scaledDump.Nodes.Select(n => n.Id).Concat(scaledDump.Blocks.Select(b => b.Id)));
         int maxReloadedId = reloadedIds.Max();
 
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         using Spice86Creator creator = CreateCreator(binName);
         using Spice86DependencyInjection di = creator.Create();
         Machine machine = di.Machine;
@@ -228,7 +260,7 @@ public class CfgGraphReloadTest {
             .Select(n => n.Id)
             .Single();
 
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         using Spice86Creator creator = CreateCreator(binName);
         using Spice86DependencyInjection di = creator.Create();
         Machine machine = di.Machine;
@@ -263,7 +295,7 @@ public class CfgGraphReloadTest {
         (CfgReloadDump dump, byte[] memoryImage) = CaptureDumpAndMemory(binName);
         SegmentedAddress entryAddress = ParseAddress(dump.EntryPoints[0]);
 
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         using Spice86Creator creator = CreateCreator(binName);
         using Spice86DependencyInjection di = creator.Create();
         Machine machine = di.Machine;
@@ -350,7 +382,7 @@ public class CfgGraphReloadTest {
         using Spice86DependencyInjection di = creator.Create();
         di.ProgramExecutor.Run();
         Machine machine = di.Machine;
-        CfgReloadDump dump = new CfgReloadExporter().Export(machine.CfgCpu.ExecutionContextManager);
+        CfgReloadDump dump = new CfgReloadExporter().Export(machine.CfgCpu.ExecutionContextManager, null);
         return (dump, machine.Memory.ReadRam());
     }
 
@@ -380,7 +412,7 @@ public class CfgGraphReloadTest {
         }
     }
 
-    private static CfgNodeExecutionCompiler NewCompiler(ILoggerService loggerService) {
+    private static CfgNodeExecutionCompiler NewCompiler(ILogger loggerService) {
         return new CfgNodeExecutionCompiler(new CfgNodeExecutionCompilerMonitor(loggerService), loggerService, JitMode.InterpretedOnly);
     }
 

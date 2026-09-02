@@ -41,7 +41,7 @@ public class InstructionsFeederTest : IDisposable {
     }
 
     private InstructionsFeeder CreateInstructionsFeeder(IMmu mmu) {
-        ILoggerService loggerService = Substitute.For<ILoggerService>();
+        ILogger loggerService = Substitute.For<ILogger>();
         State state = new(CpuModel.INTEL_80286);
         AddressReadWriteBreakpoints memoryBreakpoints = new();
         AddressReadWriteBreakpoints ioBreakpoints = new();
@@ -52,7 +52,7 @@ public class InstructionsFeederTest : IDisposable {
         _compiler = new CfgNodeExecutionCompiler(new CfgNodeExecutionCompilerMonitor(loggerService), loggerService, JitMode.InterpretedOnly);
 
         return new InstructionsFeeder(emulatorBreakpointsManager, _memory, state, _instructionReplacer,
-            _compiler, new SequentialIdAllocator());
+            _compiler, new SequentialIdAllocator(), nodeLinker: null);
     }
 
     private void WriteJumpNear(SegmentedAddress address) {

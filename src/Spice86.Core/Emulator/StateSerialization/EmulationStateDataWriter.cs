@@ -1,10 +1,11 @@
 namespace Spice86.Core.Emulator.StateSerialization;
 
-using Serilog.Events;
+using Microsoft.Extensions.Logging;
 
 using Spice86.Core.CLI;
 using Spice86.Core.Emulator.CPU;
 using Spice86.Core.Emulator.CPU.CfgCpu;
+using Spice86.Core.Emulator.CPU.CfgCpu.Feeder;
 using Spice86.Core.Emulator.Function;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration;
 using Spice86.Core.Emulator.ReverseEngineer.ControlFlowGraph;
@@ -33,6 +34,7 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
     private readonly FunctionCatalogue _functionCatalogue;
     private readonly ISerializableBreakpointsSource _serializableBreakpointsSource;
     private readonly Configuration _configuration;
+    private readonly CfgNodeIndex _nodeIndex;
 
     /// <summary>
     /// Initializes a new instance.
@@ -49,6 +51,7 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
     /// <param name="emulatorStateSerializationFolder">Where to save the data.</param>
     /// <param name="serializableBreakpointsSource">Source for breakpoints to serialize</param>
     /// <param name="configuration">The emulator configuration, used to derive the program checksum baked into the generated project.</param>
+    /// <param name="nodeIndex">The persistent graph index whose poison set is serialized with the CFG reload dump.</param>
     /// <param name="loggerService">The logger service implementation.</param>
     internal EmulationStateDataWriter(State state,
         ExecutionAddressesExtractor executionAddressesExtractor,
@@ -62,7 +65,8 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
         EmulatorStateSerializationFolder emulatorStateSerializationFolder,
         ISerializableBreakpointsSource serializableBreakpointsSource,
         Configuration configuration,
-        ILoggerService loggerService) : base(emulatorStateSerializationFolder, loggerService) {
+        CfgNodeIndex nodeIndex,
+        ILogger loggerService) : base(emulatorStateSerializationFolder, loggerService) {
         _executionAddressesExtractor = executionAddressesExtractor;
         _state = state;
         _memoryDataExporter = memoryDataExporter;
@@ -74,14 +78,15 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
         _functionCatalogue = functionCatalogue;
         _serializableBreakpointsSource = serializableBreakpointsSource;
         _configuration = configuration;
+        _nodeIndex = nodeIndex;
     }
 
     /// <summary>
     /// Dumps all recorded data to their respective files.
     /// </summary>
     public void Write() {
-        if (LoggerService.IsEnabled(LogEventLevel.Information)) {
-            LoggerService.Information("Saving all data to {DumpDirectory}", DataDirectory);
+        if (LoggerService.IsEnabled(LogLevel.Information)) {
+            LoggerService.LogInformation("Saving all data to {DumpDirectory}", DataDirectory);
         }
         ExecutionAddresses executionAddresses = _executionAddressesExtractor.Extract();
         WriteToFile(CpuRegistersFile, () => File.WriteAllText(CpuRegistersFile, JsonSerializer.Serialize(_state)));
@@ -91,8 +96,8 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
             // The CFG and execution flow jump between overrides and are not representative of the program, so
             // the snapshot, CFG/reload/execution-flow dumps and the generated C# are all skipped: building the
             // snapshot or running the generator here would be wasted work on a non-representative graph.
-            if (LoggerService.IsEnabled(LogEventLevel.Information)) {
-                LoggerService.Information(
+            if (LoggerService.IsEnabled(LogLevel.Information)) {
+                LoggerService.LogInformation(
                     "Skipping {CfgBlocksFile}, {CfgPartitionsFile}, {CfgReloadFile}, {ExecutionFlowFile} and generated C#: code overrides are active, so the CFG and execution flow are not representative of the program.",
                     Path.GetFileName(CfgBlocksFile), Path.GetFileName(CfgPartitionsFile), Path.GetFileName(CfgReloadFile), Path.GetFileName(ExecutionFlowFile));
             }
@@ -116,8 +121,8 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
         // partitioned program, so the generated-C# dump is skipped rather than aborting the whole state dump.
         // Genuine generation failures on a full graph still propagate loudly out of WriteToFile.
         if (cfgCpuSnapshot.PartitionedProgram is null) {
-            if (LoggerService.IsEnabled(LogEventLevel.Information)) {
-                LoggerService.Information(
+            if (LoggerService.IsEnabled(LogLevel.Information)) {
+                LoggerService.LogInformation(
                     "Skipping {FileName}: the CFG graph is truncated, so no partitioned program is available for C# generation.",
                     Path.GetFileName(CfgGeneratedCSharpFile));
             }
@@ -140,17 +145,17 @@ public class EmulationStateDataWriter : EmulationStateDataIoHandler {
     }
 
     private void WriteToFile(string path, Action writeAction) {
-        if (LoggerService.IsEnabled(LogEventLevel.Information)) {
-            LoggerService.Information("Saving file {FileName}", Path.GetFileName(path));
+        if (LoggerService.IsEnabled(LogLevel.Information)) {
+            LoggerService.LogInformation("Saving file {FileName}", Path.GetFileName(path));
         }
         writeAction();
-        if (LoggerService.IsEnabled(LogEventLevel.Information)) {
-            LoggerService.Information("Saved file {FileName}", Path.GetFileName(path));
+        if (LoggerService.IsEnabled(LogLevel.Information)) {
+            LoggerService.LogInformation("Saved file {FileName}", Path.GetFileName(path));
         }
     }
 
     private void WriteCfgReload(string filePath) {
-        CfgReloadDump dump = new CfgReloadExporter().Export(_executionContextManager);
+        CfgReloadDump dump = new CfgReloadExporter().Export(_executionContextManager, _nodeIndex.PoisonSet);
         string jsonString = JsonSerializer.Serialize(dump, CfgReloadSerialization.Options);
         File.WriteAllText(filePath, jsonString);
     }
