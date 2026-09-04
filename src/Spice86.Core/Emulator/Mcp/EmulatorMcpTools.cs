@@ -21,6 +21,7 @@ using Spice86.Core.Emulator.Devices.Sound.Blaster;
 using Spice86.Core.Emulator.Devices.Sound.Midi;
 using Spice86.Core.Emulator.Devices.Timer;
 using Spice86.Core.Emulator.Devices.Video;
+using Spice86.Core.Emulator.Devices.Video.Registers.Enums;
 using Spice86.Core.Emulator.InterruptHandlers.Bios.Structures;
 using Spice86.Core.Emulator.InterruptHandlers.VGA.Enums;
 using Spice86.Core.Emulator.InterruptHandlers.VGA.Records;
@@ -898,10 +899,44 @@ internal sealed class EmulatorMcpTools {
                     ScreenRows = biosDataArea.ScreenRows,
                     RendererWidth = _services.VgaRenderer.Width,
                     RendererHeight = _services.VgaRenderer.Height,
-                    BufferSize = _services.VgaRenderer.BufferSize
+                    BufferSize = _services.VgaRenderer.BufferSize,
+                    CrtController = DumpRegisters<CrtControllerRegister>(
+                        r => _services.VideoState?.CrtControllerRegisters.ReadRegister(r)),
+                    Sequencer = DumpRegisters<SequencerRegister>(
+                        r => _services.VideoState?.SequencerRegisters.ReadRegister(r)),
+                    GraphicsController = DumpRegisters<GraphicsControllerRegister>(
+                        r => _services.VideoState?.GraphicsControllerRegisters.ReadRegister(r)),
+                    AttributeController = DumpRegisters<AttributeControllerRegister>(
+                        r => _services.VideoState?.AttributeControllerRegisters.ReadRegister(r))
                 };
             }
         });
+    }
+
+    /// <summary>
+    ///     Reads every register in <typeparamref name="TRegister"/>, keyed "0xNN Name".
+    /// </summary>
+    /// <remarks>
+    ///     <b>This exists because the registers cannot be read from outside any other way.</b> The
+    ///     index/data port pair returns 0 for CRTC reads (TASK-316), and until 2026-09-04 this tool
+    ///     returned no register block at all — so "what is the CRT controller actually programmed
+    ///     to?" was unanswerable from a debugging session. That blocked TASK-315's investigation at a
+    ///     hypothesis for two sessions: the suspected cause was a retrace window derived from
+    ///     <c>VerticalTotal</c> and <c>VerticalDisplayEnd</c>, and neither could be inspected.
+    ///     Returns <c>null</c> when the register file is unavailable, rather than a map of zeroes
+    ///     that would read as real values.
+    /// </remarks>
+    private static Dictionary<string, int>? DumpRegisters<TRegister>(Func<TRegister, byte?> read)
+        where TRegister : struct, Enum {
+        var dump = new Dictionary<string, int>();
+        foreach (TRegister register in Enum.GetValues<TRegister>()) {
+            byte? value = read(register);
+            if (value == null) {
+                return null;
+            }
+            dump[$"0x{Convert.ToInt32(register):X2} {register}"] = value.Value;
+        }
+        return dump;
     }
 
     [McpServerTool(Name = "video_set_mode", UseStructuredContent = true), Description("Set a VGA/EGA/CGA video mode by mode ID. Optionally clears video memory.")]

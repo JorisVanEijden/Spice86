@@ -102,6 +102,12 @@ public sealed class EmulatorMcpServices(
     /// <summary>
     /// Gets or sets the high-level VGA functionality used by video MCP tools.
     /// </summary>
+    /// <summary>
+    ///     The raw VGA register file (CRTC, Sequencer, Graphics Controller, Attribute Controller).
+    ///     Assigned after construction like the other device services.
+    /// </summary>
+    public IVideoState? VideoState { get; set; }
+
     public IVgaFunctionality? VgaFunctionality { get; set; }
 
     /// <summary>
