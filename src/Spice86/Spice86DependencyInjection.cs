@@ -773,7 +773,7 @@ public class Spice86DependencyInjection : IDisposable {
                 }
             } catch (InvalidOperationException ex) {
                 loggerService.LogWarning(ex, "Failed to configure MCP HTTP transport on port {Port}; MCP HTTP will be unavailable", configuration.McpHttpPort);
-                mcpHttpTransport.Dispose();
+                mcpHttpTransport.Stop();
                 mcpHttpTransport = null;
             }
         }
@@ -971,7 +971,7 @@ public class Spice86DependencyInjection : IDisposable {
         if (!_disposed) {
             if (disposing) {
                 _debuggerTabRegistry.Dispose();
-                _mcpHttpTransport?.Dispose();
+                _mcpHttpTransport?.Stop();
 
                 ProgramExecutor.Dispose();
 
