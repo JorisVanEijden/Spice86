@@ -482,6 +482,12 @@ public partial class PS2Keyboard {
     /// <param name="e">The keyboard event arguments.</param>
     public void OnKeyEvent(object? sender, KeyboardEventArgs e) {
         PcKeyboardKey keyType = _scancodeConverter.ConvertToKbdKey(e.Key);
+        // Debug-level on purpose: this is the first point at which an injected key becomes
+        // visible, so it is the place to start when the guest appears to ignore input.
+        if (_loggerService.IsEnabled(LogLevel.Debug)) {
+            _loggerService.LogDebug("KEYBOARD: OnKeyEvent {Phys} -> {Key} pressed={Pressed} scanning={Scanning}",
+                e.Key, keyType, e.IsPressed, _isScanning);
+        }
         EnqueueKeyEvent(keyType, e.IsPressed);
     }
 
@@ -528,6 +534,15 @@ public partial class PS2Keyboard {
     /// <param name="isPressed">Whether the key is pressed or released.</param>
     public void EnqueueKeyEvent(PcKeyboardKey keyType, bool isPressed) {
         if (!_isScanning) {
+            // A SILENT drop here is very expensive to diagnose: every layer above still reports
+            // success (the MCP tool answers Success:true, the event is posted and dequeued), and the
+            // only visible symptom is that the guest never reacts. Say so instead.
+            if (_loggerService.IsEnabled(LogLevel.Warning)) {
+                _loggerService.LogWarning(
+                    "KEYBOARD: dropped {Key} {Action} because scanning is DISABLED "
+                    + "(the guest sent 0xF5 and no 0xF4/0xF6 since)",
+                    keyType, isPressed ? "down" : "up");
+            }
             return;
         }
 
