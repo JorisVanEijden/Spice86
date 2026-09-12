@@ -530,18 +530,12 @@ internal sealed class EmulatorMcpTools {
                 KeyboardEventArgs args = new(physicalKey, isPressed);
                 string action = isPressed ? "down" : "up";
 
-                if (_services.PauseHandler.IsPaused) {
-                    InputEventHub? pausedHub = _services.InputEventHub;
-                    if (pausedHub == null) {
-                        throw new InvalidOperationException("InputEventHub is not wired");
-                    }
-                    pausedHub.PostKeyboardEvent(args);
-                    return new EmulatorControlResponse {
-                        Success = true,
-                        Message = $"Keyboard event enqueued while paused: {parsedKey} {action}"
-                    };
-                }
-
+                // There used to be a paused branch here reporting "Keyboard event enqueued while
+                // paused". It was unreachable as anything else: ExecuteTool auto-pauses every tool
+                // that is not [McpManualControl], so IsPaused was ALWAYS true by the time this ran,
+                // and both branches posted the identical event anyway. The message only ever
+                // described the auto-pause -- but it read as "your input went nowhere", and callers
+                // acted on it, chasing a dead emulator that was working the whole time.
                 InputEventHub? hub = _services.InputEventHub;
                 if (hub == null) {
                     throw new InvalidOperationException("InputEventHub is not wired");
