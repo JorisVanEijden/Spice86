@@ -1,6 +1,7 @@
 ﻿namespace Spice86.Core.Emulator.InterruptHandlers.Input.Keyboard;
 
 using Spice86.Core.Emulator.InterruptHandlers.Bios.Structures;
+using Spice86.Core.Emulator.Memory;
 using Spice86.Core.Emulator.Memory.Indexable;
 
 /// <summary>
@@ -19,8 +20,12 @@ public class BiosKeyboardBuffer {
     public BiosKeyboardBuffer(IIndexable memory, BiosDataArea biosDataArea) {
         _memory = memory;
         _biosDataArea = biosDataArea;
-        // absolute base address is uint but BDA is low in memory so it fits in ushort
-        StartAddress = (ushort)_biosDataArea.KbdBuf.BaseAddress;
+        // Offsets from segment 0040h, as a real BIOS stores them (0x001E / 0x003E), NOT absolute
+        // addresses. Programs that own INT 9 and read the ring directly hard-code that space: Betrayal
+        // at Krondor's isr_keyboard wraps its tail only at 0x3C and kbhit_read reads 0040:[head].
+        // Absolute values (0x041E) let such a handler's tail run past the ring after ~16 keys while the
+        // reader kept wrapping at 0x043E, so every later key went unread and stale ones replayed.
+        StartAddress = (ushort)(_biosDataArea.KbdBuf.BaseAddress - _biosDataArea.BaseAddress);
         EndAddress = (ushort)(StartAddress + _biosDataArea.KbdBuf.Count);
         HeadAddress = StartAddress;
         TailAddress = StartAddress;
@@ -69,7 +74,7 @@ public class BiosKeyboardBuffer {
             return false;
         }
 
-        _memory.UInt16[0, TailAddress] = code;
+        _memory.UInt16[MemoryMap.BiosDataSegment, TailAddress] = code;
         TailAddress = newTail;
         return true;
     }
@@ -106,7 +111,7 @@ public class BiosKeyboardBuffer {
             return null;
         }
 
-        return _memory.UInt16[0, HeadAddress];
+        return _memory.UInt16[MemoryMap.BiosDataSegment, HeadAddress];
     }
 
     private ushort ComputeNextAddress(ushort address) {
