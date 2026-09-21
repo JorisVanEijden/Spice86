@@ -22,6 +22,8 @@ using Spice86.Core.Emulator.Devices.Sound.Midi;
 using Spice86.Core.Emulator.Devices.Timer;
 using Spice86.Core.Emulator.Devices.Video;
 using Spice86.Core.Emulator.Devices.Video.Registers.Enums;
+using Spice86.Core.Emulator.Devices.Video.Registers;
+using Spice86.Core.Emulator.Devices.Video.Registers.Graphics;
 using Spice86.Core.Emulator.InterruptHandlers.Bios.Structures;
 using Spice86.Core.Emulator.InterruptHandlers.VGA.Enums;
 using Spice86.Core.Emulator.InterruptHandlers.VGA.Records;
@@ -1054,6 +1056,16 @@ internal sealed class EmulatorMcpTools {
                     throw new ArgumentException("Color must be between 0x00 and 0xFF");
                 }
 
+                if (TryGetUnchainedPixelAddress(x, y, out uint address, out byte plane)) {
+                    WriteUnchainedPixel(address, plane, (byte)color);
+
+                    return new EmulatorControlResponse {
+                        Success = true,
+                        Message = $"Pixel ({x}, {y}) set to 0x{color:X2} "
+                            + $"(unchained: plane {plane}, address 0x{address:X5})"
+                    };
+                }
+
                 vgaFunctionality.WritePixel((byte)color, (ushort)x, (ushort)y);
                 return new EmulatorControlResponse {
                     Success = true,
@@ -1071,7 +1083,9 @@ internal sealed class EmulatorMcpTools {
                 VgaMode currentMode = vgaFunctionality.GetCurrentMode();
                 ValidatePixelCoordinates(x, y, currentMode);
 
-                byte color = vgaFunctionality.ReadPixel((ushort)x, (ushort)y);
+                byte color = TryGetUnchainedPixelAddress(x, y, out uint address, out byte plane)
+                    ? ReadUnchainedPixel(address, plane)
+                    : vgaFunctionality.ReadPixel((ushort)x, (ushort)y);
                 return new {
                     X = x,
                     Y = y,
@@ -1473,6 +1487,94 @@ internal sealed class EmulatorMcpTools {
         int maximumRow = biosDataArea.ScreenRows;
         if (y < 0 || y > maximumRow) {
             throw new ArgumentException($"Y must be between 0 and {maximumRow}");
+        }
+    }
+
+    /// <summary>
+    /// Where a pixel lives when the adapter is UNCHAINED (Mode-X), or false when it is not.
+    /// </summary>
+    /// <remarks>
+    /// <b>The BIOS pixel calls cannot serve an unchained adapter.</b>
+    /// <c>VgaFunctionality.ReadPixel</c>/<c>WritePixel</c> implement INT 10h AH=0Dh/0Ch and use the
+    /// chained formula <c>A000:0000 + y*width + x</c>. With Sequencer 0x04 bit 3 (Chain-4) clear
+    /// that lands in the wrong plane AND ignores the CRTC start address, so on a page-flipped
+    /// Mode-X game every write goes somewhere invisible and every read answers 0 — measured on
+    /// Betrayal at Krondor, where a write reported success and changed 0 of 256,000 screen pixels
+    /// (TASK-432).
+    ///
+    /// <para>Fixing the BIOS path instead would change real INT 10h behaviour for every program,
+    /// which is not this tool's business — hence the branch here.</para>
+    ///
+    /// <para>Addressing is the standard unchained one: four pixels per memory address, one per
+    /// plane, so <c>plane = x &amp; 3</c> and the byte within the plane is
+    /// <c>startAddress + y*(Offset*2) + x/4</c>. CRTC 0x13 Offset counts words, so a 320-wide
+    /// Mode-X screen reads Offset 40 → 80 bytes per scanline per plane.</para>
+    /// </remarks>
+    private bool TryGetUnchainedPixelAddress(int x, int y, out uint address, out byte plane) {
+        address = 0;
+        plane = 0;
+        IVideoState? videoState = _services.VideoState;
+        if (videoState == null || videoState.SequencerRegisters.MemoryModeRegister.Chain4Mode) {
+            return false;
+        }
+
+        plane = (byte)(x & 3);
+        int bytesPerScanline = videoState.CrtControllerRegisters.Offset * 2;
+        uint planeOffset = (uint)(videoState.CrtControllerRegisters.ScreenStartAddress
+            + (y * bytesPerScanline) + (x >> 2));
+        // DecodeWriteAddress/DecodeReadAddress subtract this base back off, so hand them an address
+        // in the window the adapter is actually mapped at rather than a hardcoded 0xA0000.
+        address = videoState.GraphicsControllerRegisters.MiscellaneousGraphicsRegister.BaseAddress
+            + planeOffset;
+
+        return true;
+    }
+
+    /// <summary>
+    /// Pokes one plane through the ordinary memory path, so <c>VideoMemory</c>'s own plane decode
+    /// does the work rather than this tool duplicating it.
+    /// </summary>
+    /// <remarks>
+    /// The four registers saved here are the ones that silently distort a raw byte write: a
+    /// non-zero write mode, set/reset substituting its own colour, and a bit mask letting only some
+    /// bits through. A debugging poke has to mean what it says whatever the game left behind, and
+    /// it has to put all four back or the next frame the GAME draws is corrupted.
+    /// </remarks>
+    private void WriteUnchainedPixel(uint address, byte plane, byte color) {
+        IVideoState videoState = _services.VideoState!;
+        Register8 planeMask = videoState.SequencerRegisters.PlaneMaskRegister;
+        GraphicsControllerRegisters graphics = videoState.GraphicsControllerRegisters;
+
+        byte savedPlaneMask = planeMask.Value;
+        byte savedMode = graphics.GraphicsModeRegister.Value;
+        byte savedEnableSetReset = graphics.EnableSetReset.Value;
+        byte savedBitMask = graphics.BitMask;
+        try {
+            planeMask.Value = (byte)(1 << plane);
+            graphics.GraphicsModeRegister.WriteMode = WriteMode.WriteMode0;
+            graphics.EnableSetReset.Value = 0;
+            graphics.BitMask = 0xFF;
+            _services.Memory.WriteRam(new[] { color }, address);
+        } finally {
+            planeMask.Value = savedPlaneMask;
+            graphics.GraphicsModeRegister.Value = savedMode;
+            graphics.EnableSetReset.Value = savedEnableSetReset;
+            graphics.BitMask = savedBitMask;
+        }
+    }
+
+    /// <summary>Reads one plane through the ordinary memory path, restoring Read Map Select.</summary>
+    private byte ReadUnchainedPixel(uint address, byte plane) {
+        IVideoState videoState = _services.VideoState!;
+        ReadMapSelectRegister readMapSelect = videoState.GraphicsControllerRegisters.ReadMapSelectRegister;
+
+        byte saved = readMapSelect.Value;
+        try {
+            readMapSelect.PlaneSelect = plane;
+
+            return _services.Memory.ReadRam(1, address)[0];
+        } finally {
+            readMapSelect.Value = saved;
         }
     }
 
