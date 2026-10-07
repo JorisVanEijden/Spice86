@@ -24,59 +24,50 @@ public class CfgGeneratedOverrides : CSharpOverrideHelper {
         cs1 = 0xF000;
         cs2 = 0xF100;
 
-        DefineFunction(cs2, 0x0000, unknown_F100_0000_F1000);
-        DefineFunction(cs2, 0x0008, unknown_F100_0008_F1008);
-        DefineFunction(cs1, 0xFFF0, unknown_F000_FFF0_FFFF0);
+        DefineFunction(cs2, 0x0000, unknown_F100_0000_F1000, name: "unknown");
+        DefineFunction(cs2, 0x0008, unknown_F100_0008_F1008, name: "unknown");
+        DefineFunction(cs1, 0xFFF0, unknown_F000_FFF0_FFFF0, name: "unknown");
     }
 
     public virtual Action unknown_F100_0000_F1000(int loadOffset) {
-    label_F100_0000_F1000_7:
         CheckExternalEvents(cs2, 0x0000);
         // F100:0000 push CS
         Stack.Push16(CS);
         // F100:0001 call near 8
         NearCall(cs2, 0x0004, unknown_F100_0008_F1008);
-    label_F100_0004_F1004_21:
         CheckExternalEvents(cs2, 0x0004);
         // F100:0004 mov AX,0x0042
-        AX = (ushort)0x0042;
+        AX = 0x0042;
         // F100:0007 ret far
-        return FarRet((ushort)0x0000);
+        return FarRet();
     }
 
     public virtual Action unknown_F100_0008_F1008(int loadOffset) {
-    label_F100_0008_F1008_10:
         CheckExternalEvents(cs2, 0x0008);
         // F100:0008 xor BX,BX
         BX = Alu16.Xor(BX, BX);
         // F100:000A ret far
-        return FarRet((ushort)0x0000);
+        return FarRet();
     }
 
     public virtual Action unknown_F000_FFF0_FFFF0(int loadOffset) {
-        goto label_F000_FFF0_FFFF0_0;
-
-    label_F000_0000_F0000_1:
+        CheckExternalEvents(cs1, 0xFFF0);
+        // F000:FFF0 jmp short 0
         CheckExternalEvents(cs1, 0x0000);
         // F000:0000 mov AX,0x1000
-        AX = (ushort)0x1000;
+        AX = 0x1000;
         // F000:0003 mov SS,AX
         SS = AX;
         State.InterruptShadowing = true;
         // F000:0005 mov SP,0x0100
-        SP = (ushort)0x0100;
+        SP = 0x0100;
         // F000:0008 call far F100:0000
         FarCall(cs1, 0x000D, cs2, unknown_F100_0000_F1000);
-    label_F000_000D_F000D_25:
         CheckExternalEvents(cs1, 0x000D);
         // F000:000D mov word ptr DS:[0],AX
-        UInt16[DS, (ushort)0x0000] = AX;
+        UInt16[DS, 0] = AX;
         // F000:0010 hlt
         return Hlt();
-    label_F000_FFF0_FFFF0_0:
-        CheckExternalEvents(cs1, 0xFFF0);
-        // F000:FFF0 jmp short 0
-        goto label_F000_0000_F0000_1;
     }
 
 }

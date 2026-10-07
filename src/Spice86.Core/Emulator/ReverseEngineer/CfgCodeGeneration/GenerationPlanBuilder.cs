@@ -3,7 +3,9 @@ namespace Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration;
 using Spice86.Core.Emulator.CPU.CfgCpu.ControlFlowGraph;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model.Plan;
+using Spice86.Core.Emulator.ReverseEngineer.ControlFlowGraph.Analysis;
 using Spice86.Core.Emulator.ReverseEngineer.FunctionPartitioning.Model;
+using Spice86.Core.Emulator.ReverseEngineer.Graph;
 
 using System.Linq;
 
@@ -16,15 +18,9 @@ using SelectorNode = Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction.SelfModi
 /// </summary>
 internal static class GenerationPlanBuilder {
     public static GenerationPlan Build(CfgGeneratorContext context) {
-        // A cyclic-flow transfer's back-edge targets the entrydispatcher label, so both partitions it
-        // connects must emit that label (see MethodPlan.NeedsEntryDispatchLabel).
-        HashSet<CfgCodePartition> cyclicFlowPartitions = context.Program.Transfers
-            .Where(transfer => transfer.Kind == CfgCodePartitionTransferKind.CyclicCrossPartitionFlow)
-            .SelectMany(transfer => new[] { transfer.FromPartition, transfer.ToPartition })
-            .ToHashSet();
         List<MethodPlan> methods = context.Program.Partitions
             .OrderBy(partition => partition.Id)
-            .Select(partition => BuildMethodPlan(context, partition, cyclicFlowPartitions.Contains(partition)))
+            .Select(partition => BuildMethodPlan(context, partition))
             .ToList();
         return new GenerationPlan {
             SegmentFields = BuildSegmentFields(context),
@@ -100,11 +96,18 @@ internal static class GenerationPlanBuilder {
             .ToList();
     }
 
-    private static MethodPlan BuildMethodPlan(CfgGeneratorContext context, CfgCodePartition partition, bool isCyclicFlowParticipant) {
-        List<CfgBlock> blocks = partition.Blocks
-            .OrderBy(block => block.Entry.Address.Linear)
-            .ThenBy(block => block.Id)
-            .ToList();
+    private static MethodPlan BuildMethodPlan(CfgGeneratorContext context, CfgCodePartition partition) {
+        PartitionBlockGraph blockGraph = PartitionBlockGraph.FromPartition(partition, context.GetEntries(partition)[0].Node);
+        DepthFirstOrdering<CfgBlock> traversal = new(
+            [blockGraph.PrimaryEntryBlock, .. blockGraph.Blocks],
+            block => LayoutSuccessors(block, blockGraph));
+
+        if (traversal.PostOrder.Count != blockGraph.Blocks.Count) {
+            throw new InvalidOperationException(
+                $"Block traversal of {context.GetMethodName(partition)} visited {traversal.PostOrder.Count} of {blockGraph.Blocks.Count} blocks.");
+        }
+
+        List<CfgBlock> blocks = traversal.ReversePostOrder.ToList();
         List<ICfgNode> nodes = blocks.SelectMany(block => block.Instructions).ToList();
         List<NodeEmissionPlan> nodeEmissionPlans = [];
         foreach (CfgBlock block in blocks) {
@@ -122,6 +125,22 @@ internal static class GenerationPlanBuilder {
         }
 
         return new MethodPlan(partition, context.GetMethodName(partition), context.GetEntries(partition), blocks,
-            nodes, nodeEmissionPlans, nextNodeByNode, isCyclicFlowParticipant);
+            nodes, nodeEmissionPlans, nextNodeByNode, blockGraph, traversal);
+    }
+
+    /// <summary>
+    /// Returns successors for layout: non-fallthrough successors in descending address order, then the fallthrough successor last.
+    /// </summary>
+    private static IEnumerable<CfgBlock> LayoutSuccessors(CfgBlock block, PartitionBlockGraph graph) {
+        CfgBlock? fallthrough = graph.GetFallthroughSuccessor(block);
+        foreach (CfgBlock successor in graph.GetSuccessors(block)
+            .Where(successor => successor != fallthrough)
+            .OrderByDescending(successor => successor.Entry.Address.Linear)
+            .ThenByDescending(successor => successor.Id)) {
+            yield return successor;
+        }
+        if (fallthrough != null) {
+            yield return fallthrough;
+        }
     }
 }

@@ -45,7 +45,7 @@ internal sealed class TransferEmitter(CfgGeneratorContext context) {
                 return EmittedCode.Statements(
                     new BlockStatement($"if (JumpDispatcher.Jump({methodName}, 0x{loadOffset:X4}))", [
                         new LineStatement("loadOffset = JumpDispatcher.NextEntryAddress;"),
-                        new LineStatement("goto entrydispatcher;", Diverges: true)
+                        new GotoEntryDispatcherStatement()
                     ]),
                     new LineStatement("return JumpDispatcher.RequiredJumpAsmReturn;", Diverges: true));
             case CfgCodePartitionTransferKind.CallOut:
@@ -61,13 +61,21 @@ internal sealed class TransferEmitter(CfgGeneratorContext context) {
         }
     }
 
-    public EmittedCode EmitFallthroughIfNeeded(ICfgNode source, MethodPlan methodPlan) {
+    /// <summary>
+    /// Lowers the fallthrough of a non-terminating instruction or callback: its observed <see cref="InstructionSuccessorType.Normal"/> successor at the next address in memory, or a <c>FailAsUntested</c> throw when discovery never observed it falling through (it only faulted, or discovery stopped on it).
+    /// A callback whose handler moved CS:IP elsewhere (DOS EXEC, terminate) also has <see cref="InstructionSuccessorType.Normal"/> successors at those targets; generated code does not follow them.
+    /// </summary>
+    public EmittedCode EmitFallthroughIfNeeded(CfgInstruction source, MethodPlan methodPlan) {
         if (source.UniqueSuccessor is not null) {
             return Emit(new ResolvedCfgEdge(source, source.UniqueSuccessor, InstructionSuccessorType.Normal,
                 context.FindTransfer(source, source.UniqueSuccessor, InstructionSuccessorType.Normal)?.Kind), methodPlan);
         }
 
-        return EmittedCode.None;
+        if (context.TryResolveEdge(source, InstructionSuccessorType.Normal,
+                source.NextInMemoryAddress32.ToSegmentedAddress()) is ResolvedCfgEdge fallthrough) {
+            return Emit(fallthrough, methodPlan);
+        }
+        return EmittedCode.Diverging($"throw FailAsUntested(\"Unobserved fallthrough after {source.Address}\");");
     }
 
     /// <summary>
@@ -129,7 +137,7 @@ internal sealed class TransferEmitter(CfgGeneratorContext context) {
         if (!forceGoto && ReferenceEquals(target, next)) {
             return EmittedCode.None;
         }
-        return EmittedCode.Diverging($"goto {context.GetLabel(target)};");
+        return EmittedCode.Statements(new GotoStatement(target));
     }
 
     private static EmittedCode PartitionReturn(string methodName, int loadOffset) =>

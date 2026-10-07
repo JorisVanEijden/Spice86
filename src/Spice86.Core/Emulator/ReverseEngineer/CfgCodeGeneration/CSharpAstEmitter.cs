@@ -16,6 +16,7 @@ using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model.Statement;
 using Spice86.Core.Emulator.ReverseEngineer.FunctionPartitioning.Model;
 using Spice86.Shared.Emulator.Memory;
 
+using System.Globalization;
 using System.Linq;
 using System.Reflection;
 
@@ -97,8 +98,8 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
 
     /// <summary>
     /// Lowers the body of an instruction whose execution AST is rooted at <paramref name="node"/> through the
-    /// AST's own <c>Accept</c> dispatch, then appends the fallthrough transfer to the instruction's unique
-    /// successor unless the body already terminates control flow.
+    /// AST's own <c>Accept</c> dispatch, then appends the fallthrough transfer
+    /// (<see cref="TransferEmitter.EmitFallthroughIfNeeded"/>) unless the body already terminates control flow.
     /// </summary>
     public EmittedCode LowerInstructionBody(CfgInstruction instruction, IVisitableAstNode node) {
         EmittedCode body = node.Accept(this);
@@ -184,13 +185,13 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         CallContinuation continuation = Context.ResolveCallContinuation(node.Instruction);
         SegmentedAddress expectedReturn = continuation.ExpectedReturnAddress;
         return EmittedCode.Concat(
-            EmittedCode.Line($"InterruptCall({Context.GetSegmentVariable(expectedReturn.Segment)}, 0x{expectedReturn.Offset:X4}, unchecked((byte)({Expr(node.VectorNumber)})));"),
+            EmittedCode.Line($"InterruptCall({Context.GetSegmentVariable(expectedReturn.Segment)}, 0x{expectedReturn.Offset:X4}, {Cast(DataType.UINT8, Expr(node.VectorNumber))});"),
             Transfer.EmitPostCallContinuation(node.Instruction, continuation, CurrentMethod));
     }
 
     public EmittedCode VisitCallbackNode(CallbackNode node) =>
         EmittedCode.Concat(
-            EmittedCode.Line($"Callback(unchecked((ushort)({Expr(node.CallbackNumber)})));"),
+            EmittedCode.Line($"Callback({Cast(DataType.UINT16, Expr(node.CallbackNumber))});"),
             Transfer.EmitFallthroughIfNeeded(node.Instruction, CurrentMethod));
 
     public EmittedCode VisitSelectorNode(SelectorNode node) => LowerSelector(node.CfgSelector);
@@ -230,11 +231,8 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
 
     public EmittedCode VisitIfElseNode(IfElseNode node) {
         if (!NodeContainsControlFlow(node)) {
-            // Pure data conditional (ternary-like): both arms are always emitted, including an empty `else`
-            // block, matching the historical statement emitter.
-            return EmittedCode.Statements(
-                new BlockStatement($"if ({Expr(node.Condition)})", node.TrueCase.Accept(this).AsStatements()),
-                new BlockStatement("else", node.FalseCase.Accept(this).AsStatements()));
+            // Pure data conditional (ternary-like): an empty false arm renders no `else`.
+            return EmittedCode.Statements(new IfElseStatement(Expr(node.Condition), node.TrueCase.Accept(this).AsStatements(), node.FalseCase.Accept(this).AsStatements()));
         }
 
         // Control-flow conditional: at least one arm transfers, so it carries the source instruction.
@@ -246,20 +244,23 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         EmittedCode falseArm = LowerConditionalArm(instruction, node.FalseCase);
 
         if (!trueArm.IsEmpty) {
-            List<StatementItem> items = [new BlockStatement($"if ({condition})", trueArm.AsStatements())];
-            if (!falseArm.IsEmpty) {
-                items.Add(new BlockStatement("else", falseArm.AsStatements()));
-            }
-            return EmittedCode.Statements(items);
+            return EmittedCode.Statements(new IfElseStatement(condition, trueArm.AsStatements(), falseArm.AsStatements()));
         }
 
         // The taken arm is empty (e.g. a fallthrough that is the next emitted node). Emit only the
         // remaining arm under the negated condition rather than an empty `if` with a populated `else`.
         if (!falseArm.IsEmpty) {
-            return EmittedCode.Statements(new BlockStatement($"if (!({condition}))", falseArm.AsStatements()));
+            return EmittedCode.Statements(new IfElseStatement(NegatedCondition(node.Condition), falseArm.AsStatements(), []));
         }
 
         return EmittedCode.None;
+    }
+
+    private string NegatedCondition(IVisitableAstNode condition) {
+        if (condition is UnaryOperationNode { UnaryOperation: UnaryOperation.NOT } notNode) {
+            return Expr(notNode.Value);
+        }
+        return $"!{Parenthesize(Expr(condition), UnaryPrecedence)}";
     }
 
     private static CfgInstruction? FindArmInstruction(IfElseNode node) =>
@@ -355,7 +356,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         return EmittedCode.Statements(new SwitchStatement($"switch ((ushort)({targetExpression}))", cases, defaultBody));
     }
 
-    private EmittedCode BuildFarRuntimeDispatch(CfgInstruction instruction, string segmentExpression, string offsetExpression, string targetKind,
+    private EmittedCode BuildFarRuntimeDispatch(CfgInstruction instruction, CSharpFragment segmentExpression, CSharpFragment offsetExpression, string targetKind,
         Func<ResolvedCfgEdge, IReadOnlyList<StatementItem>> bodyForEdge) {
         if (!TryGetObservedDispatchEdges(instruction, $"far {targetKind}", out IReadOnlyList<ResolvedCfgEdge> edges, out EmittedCode failure)) {
             return failure;
@@ -363,8 +364,8 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         string segmentVariable = $"targetSegment_{instruction.Id}";
         string offsetVariable = $"targetOffset_{instruction.Id}";
         List<StatementItem> items = [
-            new LineStatement($"ushort {segmentVariable} = unchecked((ushort)({segmentExpression}));"),
-            new LineStatement($"ushort {offsetVariable} = unchecked((ushort)({offsetExpression}));")
+            new LineStatement($"ushort {segmentVariable} = {Cast(DataType.UINT16, segmentExpression)};"),
+            new LineStatement($"ushort {offsetVariable} = {Cast(DataType.UINT16, offsetExpression)};")
         ];
         foreach (ResolvedCfgEdge edge in edges.OrderBy(edge => edge.Target.Address.Segment).ThenBy(edge => edge.Target.Address.Offset)) {
             // The matched branch must transfer explicitly (the body uses forceSameMethodGoto) so it never
@@ -547,22 +548,9 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     }
 
     public EmittedCode VisitAbsolutePointerNode(AbsolutePointerNode node) =>
-        Atomic($"{ToMemoryIndexer(node.DataType)}[unchecked((uint)({Expr(node.AbsoluteAddress)}))]", node.DataType);
+        Atomic($"{ToMemoryIndexer(node.DataType)}[{Cast(DataType.UINT32, Expr(node.AbsoluteAddress))}]", node.DataType);
 
-    public EmittedCode VisitConstantNode(ConstantNode node) {
-        if (node.DataType == DataType.BOOL) {
-            return Atomic(node.Value == 0 ? "false" : "true", DataType.BOOL);
-        }
-
-        string literal = node.DataType.BitWidth switch {
-            BitWidth.BYTE_8 => node.DataType.Signed ? $"(sbyte){node.SignedValue}" : $"(byte)0x{node.Value:X2}",
-            BitWidth.WORD_16 => node.DataType.Signed ? $"(short){node.SignedValue}" : $"(ushort)0x{node.Value:X4}",
-            BitWidth.DWORD_32 or BitWidth.BOOL_1 => node.DataType.Signed ? $"{node.SignedValue}" : $"0x{node.Value:X8}u",
-            BitWidth.QWORD_64 => node.DataType.Signed ? $"{node.SignedValue}L" : $"0x{node.Value:X16}UL",
-            _ => throw Unsupported(node)
-        };
-        return Atomic(literal, node.DataType);
-    }
+    public EmittedCode VisitConstantNode(ConstantNode node) => ConstantLiteral(node);
 
     public EmittedCode VisitNearAddressNode(NearAddressNode node) => VisitConstantNode(node);
 
@@ -572,6 +560,12 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
             // the low assignment precedence makes Parenthesize wrap it (`(x = y)`).
             string assignment = $"{Expr(node.Left)} = {EmitAssignmentRight(node)}";
             return new CSharpFragment(assignment, node.DataType, AssignmentPrecedence);
+        }
+
+        CSharpFragment leftFragment = Expr(node.Left);
+        CSharpFragment rightFragment = Expr(node.Right);
+        if (TrySimplifyBinaryOperation(node.BinaryOperation, leftFragment, rightFragment) is CSharpFragment simplified) {
+            return simplified;
         }
 
         (string op, int precedence) = node.BinaryOperation switch {
@@ -598,12 +592,58 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
 
         // Left-associative: the left operand may share the operator's precedence without parentheses; the
         // right operand needs them when it binds equally or more loosely.
-        string left = Parenthesize(Expr(node.Left), precedence);
-        string right = Parenthesize(Expr(node.Right), precedence + 1);
+        string left = Parenthesize(leftFragment, precedence);
+        string right = Parenthesize(rightFragment, precedence + 1);
         // C# promotes byte/ushort/short/sbyte arithmetic to int, so the actual evaluated type is not the
         // node's semantic DataType; leave it unknown so a cast back to the operand width is never elided.
         DataType? resultType = node.DataType == DataType.BOOL ? DataType.BOOL : null;
         return new CSharpFragment($"{left} {op} {right}", resultType, precedence);
+    }
+
+    private static CSharpFragment? TrySimplifyBinaryOperation(BinaryOperation operation, CSharpFragment left, CSharpFragment right) {
+        if (operation is BinaryOperation.EQUAL or BinaryOperation.NOT_EQUAL) {
+            return TrySimplifyBoolComparison(operation == BinaryOperation.EQUAL, left, right);
+        }
+        if (operation == BinaryOperation.PLUS && right.Constant is ConstantNode constant) {
+            return TrySimplifyConstantAddition(left, constant);
+        }
+        return null;
+    }
+
+    private static CSharpFragment? TrySimplifyBoolComparison(bool isEqual, CSharpFragment left, CSharpFragment right) {
+        if (right.Constant is ConstantNode rightConstant && rightConstant.DataType == DataType.BOOL
+            && left.Constant is null && left.Type == DataType.BOOL) {
+            return BoolComparisonResult(isEqual, left, rightConstant);
+        }
+        if (left.Constant is ConstantNode leftConstant && leftConstant.DataType == DataType.BOOL
+            && right.Constant is null && right.Type == DataType.BOOL) {
+            return BoolComparisonResult(isEqual, right, leftConstant);
+        }
+        return null;
+    }
+
+    private static CSharpFragment BoolComparisonResult(bool isEqual, CSharpFragment operand, ConstantNode boolConstant) {
+        bool keepOperand = (boolConstant.Value != 0) == isEqual;
+        if (keepOperand) {
+            return operand;
+        }
+        return new CSharpFragment($"!{Parenthesize(operand, UnaryPrecedence)}", DataType.BOOL, UnaryPrecedence);
+    }
+
+    private static CSharpFragment? TrySimplifyConstantAddition(CSharpFragment left, ConstantNode constant) {
+        if (constant.Value == 0) {
+            return left;
+        }
+        if (!IsSubtractableNegativeConstant(constant)) {
+            return null;
+        }
+        ConstantNode magnitude = new(DataType.UnsignedFromBitWidth(constant.DataType.BitWidth), (ulong)(-constant.SignedValue));
+        return new CSharpFragment($"{Parenthesize(left, AdditivePrecedence)} - {ConstantLiteral(magnitude).Text}", null, AdditivePrecedence);
+    }
+
+    private static bool IsSubtractableNegativeConstant(ConstantNode constant) {
+        bool supportedType = constant.DataType == DataType.INT8 || constant.DataType == DataType.INT16 || constant.DataType == DataType.INT32;
+        return supportedType && constant.IsNegative && constant.SignedValue != int.MinValue;
     }
 
     public EmittedCode VisitUnaryOperationNode(UnaryOperationNode node) {
@@ -613,7 +653,8 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
             UnaryOperation.BITWISE_NOT => "~",
             _ => throw Unsupported(node)
         };
-        string operand = Parenthesize(Expr(node.Value), UnaryPrecedence);
+        int operandPrecedence = node.UnaryOperation == UnaryOperation.NEGATE ? UnaryPrecedence + 1 : UnaryPrecedence;
+        string operand = Parenthesize(Expr(node.Value), operandPrecedence);
         // Logical NOT yields bool; arithmetic/bitwise unary ops promote to int, so their evaluated type is
         // not the node's semantic DataType.
         DataType? resultType = node.UnaryOperation == UnaryOperation.NOT ? DataType.BOOL : null;
@@ -622,12 +663,15 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
 
     public EmittedCode VisitTypeConversionNode(TypeConversionNode node) {
         CSharpFragment inner = Expr(node.Value);
+        if (inner.Constant is ConstantNode constant) {
+            return ConstantLiteral(new ConstantNode(node.DataType, constant.ConvertAsCSharpCast(node.DataType)));
+        }
         if (inner.Type == node.DataType || node.DataType == DataType.BOOL && inner.Type == DataType.BOOL) {
             // Converting to a type the value already has is a no-op; keep the inner fragment as-is.
             return inner;
         }
         string text = Cast(node.DataType, inner);
-        return new CSharpFragment(text, node.DataType, CSharpFragment.AtomicPrecedence);
+        return new CSharpFragment(text, node.DataType, CastPrecedence);
     }
 
     public EmittedCode VisitFlagRegisterNode(FlagRegisterNode node) =>
@@ -654,16 +698,23 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         (CSharpFragment)$"{ToCSharpType(node.DataType)} {LocalVariableName(node.VariableName)} = {Cast(node.DataType, Expr(node.Initializer))}";
     public EmittedCode VisitInstructionNode(InstructionNode node) => throw Unsupported(node);
     public EmittedCode VisitSegmentedAddressNode(SegmentedAddressNode node) =>
-        (CSharpFragment)$"new SegmentedAddress(unchecked((ushort)({Expr(node.Segment)})), unchecked((ushort)({Expr(node.Offset)})))";
+        (CSharpFragment)$"new SegmentedAddress({Cast(DataType.UINT16, Expr(node.Segment))}, {Cast(DataType.UINT16, Expr(node.Offset))})";
+
+    private string RetHelper(string helperName, IVisitableAstNode bytesToPop) {
+        if (bytesToPop is ConstantNode { Value: 0 }) {
+            return $"{helperName}()";
+        }
+        return $"{helperName}({Cast(DataType.UINT16, Expr(bytesToPop))})";
+    }
 
     private string NearRetExpression(ReturnNearNode node) {
         string helperName = node.RetBitWidth == BitWidth.WORD_16 ? "NearRet" : "NearRet32";
-        return $"{helperName}({Expr(node.BytesToPop)})";
+        return RetHelper(helperName, node.BytesToPop);
     }
 
     private string FarRetExpression(ReturnFarNode node) {
         string helperName = node.RetBitWidth == BitWidth.WORD_16 ? "FarRet" : "FarRet32";
-        return $"{helperName}({Expr(node.BytesToPop)})";
+        return RetHelper(helperName, node.BytesToPop);
     }
 
     private string EmitAssignmentRight(BinaryOperationNode assignment) {
@@ -704,10 +755,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
 
         string targetType = ToCSharpType(dataType);
         string inner = Parenthesize(expression, CastPrecedence);
-        // Always wrap in unchecked so a narrowing cast truncates (matching x86 wraparound) regardless of
-        // whether the consuming project compiles in a checked overflow context. This applies to signed and
-        // unsigned targets alike.
-        return $"unchecked(({targetType}){inner})";
+        return $"({targetType}){inner}";
     }
 
     private static string Cast(Type targetType, CSharpFragment expression) {
@@ -724,6 +772,60 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     }
 
     private static CSharpFragment Atomic(string text, DataType type) => new(text, type, CSharpFragment.AtomicPrecedence);
+
+    /// <summary>
+    /// Renders a constant as a C# literal: magnitudes 0-9 in decimal, larger ones in hex zero-padded to the
+    /// operand width, a leading minus for negative signed values, and a suffix where C# needs one.
+    /// </summary>
+    internal static CSharpFragment ConstantLiteral(ConstantNode node) {
+        if (node.DataType == DataType.BOOL) {
+            return new CSharpFragment(node.Value == 0 ? "false" : "true", DataType.BOOL, CSharpFragment.AtomicPrecedence) { Constant = node };
+        }
+        string? minValueName = MinValueName(node);
+        if (minValueName is not null) {
+            return new CSharpFragment(minValueName, node.DataType, CSharpFragment.AtomicPrecedence) { Constant = node };
+        }
+        bool negative = node.IsNegative;
+        ulong magnitude = negative ? (ulong)(-node.SignedValue) : node.Value;
+        string sign = negative ? "-" : "";
+        string text = sign + FormatMagnitude(magnitude, node.DataType.BitWidth) + LiteralSuffix(node.DataType, node.Value);
+        int precedence = negative ? UnaryPrecedence : CSharpFragment.AtomicPrecedence;
+        return new CSharpFragment(text, node.DataType, precedence) { Constant = node };
+    }
+
+    private static string? MinValueName(ConstantNode node) {
+        if (node.DataType == DataType.INT32 && node.SignedValue == int.MinValue) {
+            return "int.MinValue";
+        }
+        if (node.DataType == DataType.INT64 && node.SignedValue == long.MinValue) {
+            return "long.MinValue";
+        }
+        return null;
+    }
+
+    private static string FormatMagnitude(ulong value, BitWidth width) {
+        if (value <= 9) {
+            return value.ToString(CultureInfo.InvariantCulture);
+        }
+        int hexDigits = width switch {
+            BitWidth.BYTE_8 => 2,
+            BitWidth.WORD_16 => 4,
+            BitWidth.DWORD_32 or BitWidth.BOOL_1 => 8,
+            BitWidth.QWORD_64 => 16,
+            _ => throw new NotSupportedException($"Unsupported bit width {width}")
+        };
+        return "0x" + value.ToString("X" + hexDigits, CultureInfo.InvariantCulture);
+    }
+
+    private static string LiteralSuffix(DataType dataType, ulong value) {
+        if (dataType.BitWidth == BitWidth.QWORD_64) {
+            return dataType.Signed ? "L" : "UL";
+        }
+        if (!dataType.Signed && dataType.BitWidth == BitWidth.DWORD_32 && value > int.MaxValue) {
+            return "u";
+        }
+        return "";
+    }
 
     /// <summary>
     /// Renders a memory-indexer offset. A constant or single register/variable offset is emitted directly

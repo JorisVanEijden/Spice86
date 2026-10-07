@@ -4,6 +4,7 @@ using FluentAssertions;
 
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using Microsoft.CodeAnalysis.Emit;
 
 using NSubstitute;
@@ -34,6 +35,16 @@ public sealed class GeneratedCodeMachineTest {
 
         program.Transfers.Should().Contain(transfer => transfer.Kind == CfgCodePartitionTransferKind.AlignedReturn);
         generatedProgram.SourceText.Should().Contain("return NearRet(");
+    }
+
+    [Fact]
+    public void ReturnWithoutBytesToPopOmitsDefaultArgument() {
+        GeneratedCodeMachineTestRunner runner = new();
+        (_, GeneratedCSharpProgram generatedProgram) = runner.GenerateProgramAndSource("partition_cross_function_loop", maxCycles: 10000);
+        string source = generatedProgram.SourceText;
+
+        source.Should().Contain("return NearRet();");
+        source.Should().NotContain("NearRet(0)");
     }
 
     [Fact]
@@ -103,20 +114,6 @@ public sealed class GeneratedCodeMachineTest {
         source.Should().Contain("// F000:12A2 jcxz short 0x129D");
         source.Should().MatchRegex(@"goto label_F000_129D_F129D_\d+;");
         source.Should().NotContain("Unobserved conditional jump target at F000:12A2");
-    }
-
-
-    [Fact]
-    public void MethodEndingInTerminatorEmitsNoTrailingUntestedThrow() {
-        // A method whose last emitted node diverges (ret/hlt/goto/partition-return) can never reach the
-        // trailing "reached the end without a terminating control-flow instruction" throw, so completion
-        // analysis must suppress that dead safety net. add ends in a terminator, so no method body in its
-        // generated source should carry the trailing throw.
-        GeneratedCodeMachineTestRunner runner = new();
-        (_, GeneratedCSharpProgram generatedProgram) = runner.GenerateProgramAndSource("add", maxCycles: 1000);
-
-        generatedProgram.SourceText.Should().NotContain(
-            "Generated partition reached the end without a terminating control-flow instruction.");
     }
 
     [Fact]
@@ -492,6 +489,35 @@ public sealed class GeneratedCodeMachineTest {
         expected[0x402] = 0xAA;
         new GeneratedCodeMachineTestRunner().TestGeneratedCode("speculative_mixed_block", expected,
             new GeneratedCodeRunOptions { MaxCycles = 1000, EnableSpeculativeCfgExploration = true });
+    }
+
+    private static void AssertLabelsMatchGotoTargets(string source) {
+        SyntaxTree tree = CSharpSyntaxTree.ParseText(source);
+        MethodDeclarationSyntax[] methods = tree.GetRoot().DescendantNodes().OfType<MethodDeclarationSyntax>().ToArray();
+        methods.Should().NotBeEmpty();
+        foreach (MethodDeclarationSyntax method in methods) {
+            HashSet<string> labels = method.DescendantNodes()
+                .OfType<LabeledStatementSyntax>()
+                .Select(labeledStatement => labeledStatement.Identifier.Text)
+                .ToHashSet();
+            HashSet<string> gotoTargets = method.DescendantNodes()
+                .OfType<GotoStatementSyntax>()
+                .Select(gotoStatement => gotoStatement.Expression)
+                .OfType<IdentifierNameSyntax>()
+                .Select(identifier => identifier.Identifier.Text)
+                .ToHashSet();
+            labels.Should().BeEquivalentTo(gotoTargets,
+                $"method {method.Identifier.Text} labels must match goto targets");
+        }
+    }
+
+    [Fact]
+    public void EveryEmittedLabelIsAGotoTarget() {
+        GeneratedCodeMachineTestRunner runner = new();
+        (_, GeneratedCSharpProgram generatedProgram1) = runner.GenerateProgramAndSource("jump1", maxCycles: 1000);
+        AssertLabelsMatchGotoTargets(generatedProgram1.SourceText);
+        (_, GeneratedCSharpProgram generatedProgram2) = runner.GenerateProgramAndSource("rep", maxCycles: 10000);
+        AssertLabelsMatchGotoTargets(generatedProgram2.SourceText);
     }
 
     [Fact]

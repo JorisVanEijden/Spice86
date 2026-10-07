@@ -5,6 +5,7 @@ using Spice86.Core.Emulator.CPU.CfgCpu.InstructionRenderer;
 using Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model.Plan;
+using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model.Statement;
 using Spice86.Core.Emulator.ReverseEngineer.FunctionPartitioning.Model;
 
 using System.Linq;
@@ -14,8 +15,8 @@ using CfgSelectorNode = Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction.SelfM
 /// <summary>
 /// Drives the emission of one C# method per CFG partition. It walks the plan's ordered list of nodes,
 /// asks the AST emitter to lower each node's body, wraps it with fault handling if needed, then hands
-/// the result to the renderer. Also emits the method skeleton: signature, entry dispatch switch,
-/// block labels, and the trailing safety-net throw.
+/// the result to the renderer. Also emits the method skeleton: signature, entry dispatch switch
+/// and block labels.
 /// </summary>
 internal sealed class MethodEmitter(
     CfgGeneratorContext context,
@@ -25,87 +26,129 @@ internal sealed class MethodEmitter(
 
     public void Emit(CSharpSourceWriter writer, MethodPlan method) {
         astEmitter.SetCurrentMethod(method);
+        EmittedCode entryDispatch = EmitEntryDispatch(method);
+        List<LoweredNode> loweredNodes = method.NodeEmissionPlans.Select(plan => Lower(plan, method)).ToList();
+
+        List<StatementItem> allStatements = StatementWalker
+            .Descendants(entryDispatch.AsStatements())
+            .Concat(loweredNodes.SelectMany(lowered => StatementWalker.Descendants(lowered.Code.AsStatements())))
+            .ToList();
+        HashSet<ICfgNode> gotoTargets = allStatements.OfType<GotoStatement>().Select(gotoStatement => gotoStatement.Target).ToHashSet();
+        bool needsEntryDispatcherLabel = allStatements.OfType<GotoEntryDispatcherStatement>().Any();
+
+        EmittedCodeRenderer renderer = new(context.GetLabel);
         writer.OpenBlock($"public virtual Action {method.MethodName}(int loadOffset)");
-        if (method.NeedsEntryDispatchLabel) {
+        if (needsEntryDispatcherLabel) {
             writer.Label("entrydispatcher");
         }
-        EmitEntryDispatch(writer, method);
-
-        bool bodyCompletesNormally = true;
-        foreach (NodeEmissionPlan nodePlan in method.NodeEmissionPlans) {
-            if (nodePlan.IsBlockEntry) {
-                writer.Label(nodePlan.Label);
-                EmitBlockEntryExternalEventCheck(writer, nodePlan.Block);
-            }
-            // Speculative instructions are verified against memory immediately before they execute.
-            // A per-instruction guard (rather than a single block-entry guard) is required so that
-            // self-modifying code performed by an earlier instruction in the same block is detected
-            // before the modified instruction's decode-time-baked body runs: at block entry the bytes
-            // still match, the divergence only appears once the earlier store has executed.
-            if (nodePlan.Node is CfgInstruction speculativeInstruction && speculativeInstruction.IsSpeculative) {
-                EmitSpeculativeGuard(writer, speculativeInstruction);
-            }
-            EmittedCode nodeCode = BuildNode(writer, nodePlan.Node, method);
-            EmittedCodeRenderer.Render(nodeCode, writer);
-            bodyCompletesNormally = nodeCode.CompletesNormally;
+        renderer.Render(entryDispatch, writer);
+        if (!entryDispatch.IsEmpty) {
+            writer.Line();
         }
-
-        // The trailing untested-failure throw is a real safety net only when control can fall off the end of
-        // the body. A body whose last node diverges (ret/hlt/goto/partition-return/throw) never reaches it, so
-        // emitting it there would be dead code. Completion is read from the emitted-code structure, not by
-        // re-parsing generated text.
+        bool bodyCompletesNormally = true;
+        foreach (LoweredNode lowered in loweredNodes) {
+            if (lowered.Plan.IsBlockEntry && gotoTargets.Contains(lowered.Plan.Node)) {
+                writer.Label(lowered.Plan.Label);
+            }
+            renderer.Render(lowered.Code, writer);
+            bodyCompletesNormally = lowered.Code.CompletesNormally;
+        }
+        // The last node has no next node, so every same-method fallthrough from it is a goto, and an unobserved
+        // fallthrough is a throw: a body that can still fall off its end is a generator bug.
         if (bodyCompletesNormally) {
-            writer.Line("throw FailAsUntested(\"Generated partition reached the end without a terminating control-flow instruction.\");");
+            throw new InvalidOperationException($"Generated method {method.MethodName} can fall off its end: its last node does not diverge.");
         }
         writer.CloseBlock();
         writer.Line();
     }
 
-    private void EmitEntryDispatch(CSharpSourceWriter writer, MethodPlan method) {
+    private sealed record LoweredNode(NodeEmissionPlan Plan, EmittedCode Code);
+
+    private EmittedCode EmitEntryDispatch(MethodPlan method) {
         if (method.NeedsEntryDispatch) {
-            writer.OpenBlock("switch (loadOffset)");
+            List<SwitchCase> cases = [];
+            List<StatementItem> defaultBody = [new LineStatement("throw FailAsUntested($\"Unknown generated entry loadOffset 0x{loadOffset:X4}\");", Diverges: true)];
             foreach (CfgCodePartitionEntry entry in method.Entries) {
-                writer.Line($"case 0x{context.GetEntryLoadOffset(method.Partition, entry.Node):X4}:");
-                writer.Line($"    goto {context.GetLabel(entry.Node)};");
+                cases.Add(new SwitchCase($"0x{context.GetEntryLoadOffset(method.Partition, entry.Node):X4}", [new GotoStatement(entry.Node)]));
             }
-            writer.Line("default:");
-            writer.Line("    throw FailAsUntested($\"Unknown generated entry loadOffset 0x{loadOffset:X4}\");");
-            writer.CloseBlock();
-            writer.Line();
-            return;
+            return EmittedCode.Statements(new SwitchStatement("switch (loadOffset)", cases, defaultBody));
         }
 
-        // Single entry: only jump when the entry is not already the first node emitted in the body
-        // (the entry point can be a reset vector at a higher address than the first emitted block).
+        // Single entry: the block layout starts with the primary entry block, so no jump is needed.
         ICfgNode primaryEntry = method.PrimaryEntry.Node;
-        if (method.NodeEmissionPlans.Count > 0 && method.NodeEmissionPlans[0].Node.Equals(primaryEntry)) {
-            return;
+        if (!method.NodeEmissionPlans[0].Node.Equals(primaryEntry)) {
+            throw new InvalidOperationException($"Primary entry {primaryEntry.Address} of {method.MethodName} is not the first emitted node.");
         }
-        writer.Line($"goto {context.GetLabel(primaryEntry)};");
-        writer.Line();
+        return EmittedCode.None;
     }
 
-    private void EmitBlockEntryExternalEventCheck(CSharpSourceWriter writer, CfgBlock block) {
+    private LoweredNode Lower(NodeEmissionPlan plan, MethodPlan method) {
+        EmittedCode eventCheck = BlockEntryEventCheck(plan);
+        EmittedCode speculativeGuard = SpeculativeGuard(plan.Node);
+        EmittedCode assemblyComment = AsmComment(plan.Node);
+        EmittedCode body = BuildNodeBody(plan.Node, method);
+        return new LoweredNode(plan, EmittedCode.Concat(eventCheck, speculativeGuard, assemblyComment, body));
+    }
+
+    private EmittedCode BlockEntryEventCheck(NodeEmissionPlan plan) {
+        if (!plan.IsBlockEntry) {
+            return EmittedCode.None;
+        }
+
         // One external-event check per block, anchored to the block entry node's segmented address.
         // A block is the unit of straight-line execution between control-flow boundaries, so a single
         // check at block entry is sufficient: once entered, execution runs to the terminator without an
         // intervening external-event boundary. Anchoring to the block entry keeps the expected resume
         // point aligned with the label other transfers goto, so a handler returning into the middle of a
         // block is still rejected.
-        ICfgNode entry = block.Entry;
-        writer.Line($"CheckExternalEvents({context.GetSegmentVariable(entry.Address.Segment)}, 0x{entry.Address.Offset:X4});");
+        ICfgNode entry = plan.Block.Entry;
+        return EmittedCode.Line($"CheckExternalEvents({context.GetSegmentVariable(entry.Address.Segment)}, 0x{entry.Address.Offset:X4});");
     }
 
-    private EmittedCode BuildNode(CSharpSourceWriter writer, ICfgNode node, MethodPlan method) {
+    /// <summary>
+    /// Emits a <c>VerifySpeculativeEntryOrFail</c> guard for a single speculative instruction.
+    /// </summary>
+    /// <remarks>
+    /// The guard re-reads the instruction's bytes from memory immediately before its body executes and fails as
+    /// untested if they no longer match the signature decoded at exploration time. Emitting one guard per
+    /// speculative instruction (rather than a single block-entry guard covering the whole run) is what lets
+    /// the generated code detect self-modifying code that an earlier instruction in the same block performs
+    /// against a later speculative instruction: an entry-only guard runs before any instruction executes and
+    /// so cannot observe such a mutation.
+    /// </remarks>
+    private EmittedCode SpeculativeGuard(ICfgNode node) {
+        if (node is not CfgInstruction { IsSpeculative: true } speculativeInstruction) {
+            return EmittedCode.None;
+        }
+
+        IReadOnlyList<byte?> signatureValue = speculativeInstruction.Signature.SignatureValue;
+        if (signatureValue.Count == 0) {
+            return EmittedCode.None;
+        }
+        string signatureBytes = string.Join(", ", signatureValue.Select(value => value is byte byteValue ? $"(byte)0x{byteValue:X2}" : "null"));
+        string segmentVariable = context.GetSegmentVariable(speculativeInstruction.Address.Segment);
+        return EmittedCode.Line($"VerifySpeculativeEntryOrFail({segmentVariable}, 0x{speculativeInstruction.Address.Offset:X4}, [{signatureBytes}]);");
+    }
+
+    /// <summary>Creates the source comment that identifies the instruction or selector node being emitted.</summary>
+    private EmittedCode AsmComment(ICfgNode node) {
         switch (node) {
             case CfgInstruction instruction:
-                string assembly = instruction.DisplayAst.Accept(assemblyRenderer);
-                writer.Line($"// {instruction.Address} {assembly}");
+                return EmittedCode.Line($"// {instruction.Address} {instruction.DisplayAst.Accept(assemblyRenderer)}");
+            case CfgSelectorNode selectorNode:
+                return EmittedCode.Line($"// {selectorNode.Address} selector");
+            default:
+                return EmittedCode.None;
+        }
+    }
+
+    private EmittedCode BuildNodeBody(ICfgNode node, MethodPlan method) {
+        switch (node) {
+            case CfgInstruction instruction:
                 astEmitter.SetCurrentInstructionAddress(instruction.Address);
                 EmittedCode body = astEmitter.LowerInstructionBody(instruction, instruction.ExecutionAst);
                 return cpuFaultWrapper.Wrap(instruction, body, method);
             case CfgSelectorNode selectorNode:
-                writer.Line($"// {selectorNode.Address} selector");
                 // Uniform Accept dispatch: the selector's ExecutionAst is the AST SelectorNode marker, whose
                 // Accept routes to VisitSelectorNode. A selector is always a block terminator, so it never has
                 // a fallthrough to append (unlike an instruction body).
@@ -115,22 +158,4 @@ internal sealed class MethodEmitter(
         }
     }
 
-    /// <summary>
-    /// Emits a <c>VerifySpeculativeEntryOrFail</c> guard for a single speculative instruction. The guard
-    /// re-reads the instruction's bytes from memory immediately before its body executes and fails as
-    /// untested if they no longer match the signature decoded at exploration time. Emitting one guard per
-    /// speculative instruction (rather than a single block-entry guard covering the whole run) is what lets
-    /// the generated code detect self-modifying code that an earlier instruction in the same block performs
-    /// against a later speculative instruction: an entry-only guard runs before any instruction executes and
-    /// so cannot observe such a mutation.
-    /// </summary>
-    private void EmitSpeculativeGuard(CSharpSourceWriter writer, CfgInstruction speculativeInstruction) {
-        IReadOnlyList<byte?> signatureValue = speculativeInstruction.Signature.SignatureValue;
-        if (signatureValue.Count == 0) {
-            return;
-        }
-        string signatureBytes = string.Join(", ", signatureValue.Select(value => value is byte byteValue ? $"(byte)0x{byteValue:X2}" : "null"));
-        string segmentVariable = context.GetSegmentVariable(speculativeInstruction.Address.Segment);
-        writer.Line($"VerifySpeculativeEntryOrFail({segmentVariable}, 0x{speculativeInstruction.Address.Offset:X4}, [{signatureBytes}]);");
-    }
 }
