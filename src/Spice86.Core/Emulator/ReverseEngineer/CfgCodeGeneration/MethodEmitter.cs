@@ -36,7 +36,7 @@ internal sealed class MethodEmitter(
         HashSet<ICfgNode> gotoTargets = allStatements.OfType<GotoStatement>().Select(gotoStatement => gotoStatement.Target).ToHashSet();
         bool needsEntryDispatcherLabel = allStatements.OfType<GotoEntryDispatcherStatement>().Any();
 
-        EmittedCodeRenderer renderer = new(context.GetLabel);
+        EmittedCodeRenderer renderer = new(method.GetLabel);
         writer.OpenBlock($"public virtual Action {method.MethodName}(int loadOffset)");
         if (needsEntryDispatcherLabel) {
             writer.Label("entrydispatcher");
@@ -47,8 +47,8 @@ internal sealed class MethodEmitter(
         }
         bool bodyCompletesNormally = true;
         foreach (LoweredNode lowered in loweredNodes) {
-            if (lowered.Plan.IsBlockEntry && gotoTargets.Contains(lowered.Plan.Node)) {
-                writer.Label(lowered.Plan.Label);
+            if (gotoTargets.Contains(lowered.Plan.Node)) {
+                writer.Label(method.GetLabel(lowered.Plan.Node));
             }
             renderer.Render(lowered.Code, writer);
             bodyCompletesNormally = lowered.Code.CompletesNormally;
@@ -67,9 +67,14 @@ internal sealed class MethodEmitter(
     private EmittedCode EmitEntryDispatch(MethodPlan method) {
         if (method.NeedsEntryDispatch) {
             List<SwitchCase> cases = [];
-            List<StatementItem> defaultBody = [new LineStatement("throw FailAsUntested($\"Unknown generated entry loadOffset 0x{loadOffset:X4}\");", Diverges: true)];
+            List<StatementItem> defaultBody = [new LineStatement(UntestedMessages.EntryOffset(), Diverges: true)];
             foreach (CfgCodePartitionEntry entry in method.Entries) {
-                cases.Add(new SwitchCase($"0x{context.GetEntryLoadOffset(method.Partition, entry.Node):X4}", [new GotoStatement(entry.Node)]));
+                List<StatementItem> body = [];
+                if (!entry.Node.Equals(entry.Block.Entry)) {
+                    body.Add(new LineStatement($"CheckExternalEvents({context.GetSegmentVariable(entry.Address.Segment)}, 0x{entry.Address.Offset:X4});"));
+                }
+                body.Add(new GotoStatement(entry.Node));
+                cases.Add(new SwitchCase($"0x{context.GetEntryLoadOffset(method.Partition, entry.Node):X4}", body));
             }
             return EmittedCode.Statements(new SwitchStatement("switch (loadOffset)", cases, defaultBody));
         }
@@ -83,25 +88,22 @@ internal sealed class MethodEmitter(
     }
 
     private LoweredNode Lower(NodeEmissionPlan plan, MethodPlan method) {
-        EmittedCode eventCheck = BlockEntryEventCheck(plan);
+        EmittedCode eventCheck = EntryEventCheck(plan);
         EmittedCode speculativeGuard = SpeculativeGuard(plan.Node);
         EmittedCode assemblyComment = AsmComment(plan.Node);
-        EmittedCode body = BuildNodeBody(plan.Node, method);
+        EmittedCode body = BuildNodeBody(plan, method);
         return new LoweredNode(plan, EmittedCode.Concat(eventCheck, speculativeGuard, assemblyComment, body));
     }
 
-    private EmittedCode BlockEntryEventCheck(NodeEmissionPlan plan) {
-        if (!plan.IsBlockEntry) {
+    private EmittedCode EntryEventCheck(NodeEmissionPlan plan) {
+        if (!plan.EmitsExternalEventCheck) {
             return EmittedCode.None;
         }
 
-        // One external-event check per block, anchored to the block entry node's segmented address.
-        // A block is the unit of straight-line execution between control-flow boundaries, so a single
-        // check at block entry is sufficient: once entered, execution runs to the terminator without an
-        // intervening external-event boundary. Anchoring to the block entry keeps the expected resume
-        // point aligned with the label other transfers goto, so a handler returning into the middle of a
-        // block is still rejected.
-        ICfgNode entry = plan.Block.Entry;
+        // Checks run at method entries and loop back-edge targets, so every execution path that
+        // repeats passes one. Anchoring to the node keeps the expected resume point aligned with its label;
+        // for block entries the node is the block entry, so the emitted check is unchanged.
+        ICfgNode entry = plan.Node;
         return EmittedCode.Line($"CheckExternalEvents({context.GetSegmentVariable(entry.Address.Segment)}, 0x{entry.Address.Offset:X4});");
     }
 
@@ -125,9 +127,9 @@ internal sealed class MethodEmitter(
         if (signatureValue.Count == 0) {
             return EmittedCode.None;
         }
-        string signatureBytes = string.Join(", ", signatureValue.Select(value => value is byte byteValue ? $"(byte)0x{byteValue:X2}" : "null"));
+        string fieldName = context.GetSignatureField(speculativeInstruction);
         string segmentVariable = context.GetSegmentVariable(speculativeInstruction.Address.Segment);
-        return EmittedCode.Line($"VerifySpeculativeEntryOrFail({segmentVariable}, 0x{speculativeInstruction.Address.Offset:X4}, [{signatureBytes}]);");
+        return EmittedCode.Line($"VerifySpeculativeEntryOrFail({segmentVariable}, 0x{speculativeInstruction.Address.Offset:X4}, {fieldName});");
     }
 
     /// <summary>Creates the source comment that identifies the instruction or selector node being emitted.</summary>
@@ -142,11 +144,11 @@ internal sealed class MethodEmitter(
         }
     }
 
-    private EmittedCode BuildNodeBody(ICfgNode node, MethodPlan method) {
-        switch (node) {
+    private EmittedCode BuildNodeBody(NodeEmissionPlan plan, MethodPlan method) {
+        switch (plan.Node) {
             case CfgInstruction instruction:
-                astEmitter.SetCurrentInstructionAddress(instruction.Address);
-                EmittedCode body = astEmitter.LowerInstructionBody(instruction, instruction.ExecutionAst);
+                astEmitter.SetCurrentInstruction(instruction);
+                EmittedCode body = astEmitter.LowerInstructionBody(instruction, instruction.ExecutionAst, plan.EmitsExternalEventCheckAfter);
                 return cpuFaultWrapper.Wrap(instruction, body, method);
             case CfgSelectorNode selectorNode:
                 // Uniform Accept dispatch: the selector's ExecutionAst is the AST SelectorNode marker, whose
@@ -154,7 +156,7 @@ internal sealed class MethodEmitter(
                 // a fallthrough to append (unlike an instruction body).
                 return selectorNode.ExecutionAst.Accept(astEmitter);
             default:
-                throw new NotSupportedException($"CFG C# generation does not support node {node.GetType().FullName} yet at {node.Address}.");
+                throw new NotSupportedException($"CFG C# generation does not support node {plan.Node.GetType().FullName} yet at {plan.Node.Address}.");
         }
     }
 

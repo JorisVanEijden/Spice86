@@ -1,8 +1,11 @@
 namespace Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration;
 
+using Spice86.Core.Emulator.CPU.CfgCpu.Ast.Visitor;
 using Spice86.Core.Emulator.CPU.CfgCpu.ControlFlowGraph;
+using Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model.Plan;
+using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Naming;
 using Spice86.Core.Emulator.ReverseEngineer.ControlFlowGraph.Analysis;
 using Spice86.Core.Emulator.ReverseEngineer.FunctionPartitioning.Model;
 using Spice86.Core.Emulator.ReverseEngineer.Graph;
@@ -13,8 +16,9 @@ using SelectorNode = Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction.SelfModi
 
 /// <summary>
 /// Converts the analyzed CFG into the ordered list of "what to write": which segment fields to declare,
-/// which overrides to register, and which methods to emit (with their node order and labels). The plan is
-/// pure data — emitters read it top to bottom without re-analyzing the graph.
+/// which signature fields to declare, which overrides to register, and which methods to emit (with their
+/// node order and labels). The plan is pure data — emitters read it top to bottom without re-analyzing the
+/// graph.
 /// </summary>
 internal static class GenerationPlanBuilder {
     public static GenerationPlan Build(CfgGeneratorContext context) {
@@ -24,6 +28,7 @@ internal static class GenerationPlanBuilder {
             .ToList();
         return new GenerationPlan {
             SegmentFields = BuildSegmentFields(context),
+            SignatureFields = context.SignatureFields,
             OverrideRegistrations = BuildOverrideRegistrations(context, methods),
             Methods = methods
         };
@@ -107,14 +112,43 @@ internal static class GenerationPlanBuilder {
                 $"Block traversal of {context.GetMethodName(partition)} visited {traversal.PostOrder.Count} of {blockGraph.Blocks.Count} blocks.");
         }
 
+        // Blocks that emit CheckExternalEvents at their entry: method entry blocks and loop back-edge targets.
+        HashSet<CfgBlock> checkedBlocks = blockGraph.EntryBlocks.ToHashSet();
+        checkedBlocks.UnionWith(traversal.RetreatingEdges.Select(edge => edge.Target));
+
         List<CfgBlock> blocks = traversal.ReversePostOrder.ToList();
         List<ICfgNode> nodes = blocks.SelectMany(block => block.Instructions).ToList();
+
+        // A partition entry can sit in the middle of a block (no edge leads to it, so the block is never
+        // split): it still needs a label for the entry dispatch goto.
+        HashSet<ICfgNode> entryNodes = context.GetEntries(partition).Select(entry => entry.Node).ToHashSet();
+        foreach (ICfgNode entryNode in entryNodes) {
+            if (!nodes.Contains(entryNode)) {
+                throw new InvalidOperationException(
+                    $"Entry {entryNode.Address} (id {entryNode.Id}) of {context.GetMethodName(partition)} is not a node of the method.");
+            }
+        }
+
+        Dictionary<ICfgNode, string> labelByNode = DisambiguatedNames.Build(
+            blocks.Select(block => block.Entry).Concat(entryNodes).Distinct(),
+            node => $"L_{node.Address.Offset:X4}",
+            node => node.Id.ToString());
+
+        Dictionary<CfgInstruction, string> localSuffixByInstruction = DisambiguatedNames.Build(
+            nodes.OfType<CfgInstruction>(),
+            instruction => $"{instruction.Address.Offset:X4}",
+            instruction => instruction.Id.ToString());
+
         List<NodeEmissionPlan> nodeEmissionPlans = [];
         foreach (CfgBlock block in blocks) {
-            // First instruction of each block is the entry: it gets the label and event check.
+            // First instruction of each block is the entry: it gets the label.
             bool isBlockEntry = true;
             foreach (ICfgNode node in block.Instructions) {
-                nodeEmissionPlans.Add(new NodeEmissionPlan(node, block, context.GetLabel(node), isBlockEntry));
+                bool emitsExternalEventCheck = isBlockEntry && checkedBlocks.Contains(block);
+                bool emitsExternalEventCheckAfter = node is CfgInstruction instruction
+                    && InterruptEnableDetectorVisitor.EnablesInterrupts(instruction.ExecutionAst)
+                    && !FallthroughBlockChecks(node, block, blockGraph, checkedBlocks);
+                nodeEmissionPlans.Add(new NodeEmissionPlan(node, block, isBlockEntry, emitsExternalEventCheck, emitsExternalEventCheckAfter));
                 isBlockEntry = false;
             }
         }
@@ -125,7 +159,7 @@ internal static class GenerationPlanBuilder {
         }
 
         return new MethodPlan(partition, context.GetMethodName(partition), context.GetEntries(partition), blocks,
-            nodes, nodeEmissionPlans, nextNodeByNode, blockGraph, traversal);
+            nodes, nodeEmissionPlans, nextNodeByNode, blockGraph, traversal, labelByNode, localSuffixByInstruction);
     }
 
     /// <summary>
@@ -142,5 +176,13 @@ internal static class GenerationPlanBuilder {
         if (fallthrough != null) {
             yield return fallthrough;
         }
+    }
+
+    private static bool FallthroughBlockChecks(ICfgNode node, CfgBlock block, PartitionBlockGraph graph, HashSet<CfgBlock> checkedBlocks) {
+        if (!node.Equals(block.Terminator)) {
+            return false;
+        }
+        CfgBlock? fallthrough = graph.GetFallthroughSuccessor(block);
+        return fallthrough != null && checkedBlocks.Contains(fallthrough);
     }
 }

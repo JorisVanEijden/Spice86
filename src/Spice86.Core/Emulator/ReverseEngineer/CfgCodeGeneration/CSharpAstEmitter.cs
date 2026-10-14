@@ -83,12 +83,13 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     public void SetCurrentMethod(MethodPlan method) => _currentMethod = method;
 
     /// <summary>
-    /// Sets the address suffix appended to local variable declarations/references emitted for the current
+    /// Sets the per-method suffix appended to local variable declarations/references emitted for the current
     /// instruction, so temps of the same name declared by different instructions in one method body do not
-    /// collide.
+    /// collide. The suffix is the instruction's offset, plus the instruction id when several instructions of the
+    /// method share that offset.
     /// </summary>
-    public void SetCurrentInstructionAddress(SegmentedAddress address) {
-        _localVariableSuffix = $"{address.Segment:X4}_{address.Offset:X4}_{address.Linear:X5}";
+    public void SetCurrentInstruction(CfgInstruction instruction) {
+        _localVariableSuffix = CurrentMethod.GetLocalSuffix(instruction);
     }
 
     // ----------------------------------------------------------------------------------------------------
@@ -101,16 +102,41 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     /// AST's own <c>Accept</c> dispatch, then appends the fallthrough transfer
     /// (<see cref="TransferEmitter.EmitFallthroughIfNeeded"/>) unless the body already terminates control flow.
     /// </summary>
-    public EmittedCode LowerInstructionBody(CfgInstruction instruction, IVisitableAstNode node) {
-        EmittedCode body = node.Accept(this);
+    public EmittedCode LowerInstructionBody(CfgInstruction instruction, IVisitableAstNode node, bool emitExternalEventCheckAfter) {
+        EmittedCode body;
+        if (DivisionPattern.TryMatch(node, instruction.Address) is DivisionPattern division) {
+            body = LowerDivision(division);
+        } else {
+            body = node.Accept(this);
+        }
         // Skip the fallthrough transfer when the node owns its control flow, or when the lowered body already
         // diverges (e.g. a CPUID/throw node lowering to a `throw`): appending a fallthrough after a diverging
         // body would be unreachable code (CS0162).
         if (TerminatesControlFlow(node) || !body.CompletesNormally) {
             return body;
         }
+        if (emitExternalEventCheckAfter) {
+            body = EmittedCode.Concat(body, ExternalEventCheckAfter(instruction));
+        }
         return EmittedCode.Concat(body, Transfer.EmitFallthroughIfNeeded(instruction, CurrentMethod));
     }
+
+    /// <summary>
+    /// Lowers a recognized division pattern to a single tuple assignment calling the appropriate helper.
+    /// </summary>
+    private EmittedCode LowerDivision(DivisionPattern division) {
+        string prefix = division.Signed ? "IDiv" : "Div";
+        string helperName = $"{prefix}{(int)division.Width}";
+        DataType divisorType = DataType.FromBitWidth(division.Width, division.Signed);
+        DataType dividendType = DataType.FromBitWidth(division.Width.Double(), division.Signed);
+        string divisor = Cast(divisorType, Expr(division.Divisor));
+        string dividend = Cast(dividendType, Expr(division.Dividend));
+        return EmittedCode.Line(
+            $"({Expr(division.Low)}, {Expr(division.High)}) = {helperName}(divisor: {divisor}, dividend: {dividend});");
+    }
+
+    private EmittedCode ExternalEventCheckAfter(CfgInstruction instruction) =>
+        EmittedCode.Line($"CheckExternalEvents({Context.GetSegmentVariable(instruction.Address.Segment)}, 0x{(ushort)instruction.NextInMemoryAddress32.Offset:X4});");
 
     private static bool TerminatesControlFlow(IVisitableAstNode node) =>
         NodeContainsControlFlow(node) || node is InvalidInstructionNode;
@@ -207,20 +233,20 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     /// </summary>
     private EmittedCode LowerSelector(CfgSelectorNode selectorNode) {
         List<StatementItem> items = [];
-        foreach ((Signature signature, CfgInstruction target) in selectorNode.SuccessorsPerSignature
-                     .OrderBy(entry => entry.Key)) {
-            string condition = BuildSignatureCondition(selectorNode, signature);
+        foreach (CfgInstruction target in selectorNode.SuccessorsPerSignature
+                     .OrderBy(entry => entry.Key)
+                     .Select(entry => entry.Value)) {
+            string condition = BuildSignatureCondition(selectorNode, target);
             ResolvedCfgEdge edge = new(selectorNode, target, InstructionSuccessorType.Normal,
                 Context.FindTransfer(selectorNode, target, InstructionSuccessorType.Normal)?.Kind);
             items.Add(new BlockStatement($"if ({condition})", Transfer.Emit(edge, CurrentMethod, forceSameMethodGoto: true).AsStatements()));
         }
-        items.Add(new LineStatement($"throw FailAsUntested(\"No selector signature matched at {selectorNode.Address}\");", Diverges: true));
+        items.Add(new LineStatement(UntestedMessages.CodeVariant(selectorNode.Address), Diverges: true));
         return EmittedCode.Statements(items);
     }
 
-    private string BuildSignatureCondition(CfgSelectorNode selectorNode, Signature signature) {
-        string signatureBytes = string.Join(", ", signature.SignatureValue.Select(value => value is byte byteValue ? $"(byte)0x{byteValue:X2}" : "null"));
-        return $"SelectorSignatureMatches({Context.GetSegmentVariable(selectorNode.Address.Segment)}, 0x{selectorNode.Address.Offset:X4}, [{signatureBytes}])";
+    private string BuildSignatureCondition(CfgSelectorNode selectorNode, CfgInstruction target) {
+        return $"SelectorSignatureMatches({Context.GetSegmentVariable(selectorNode.Address.Segment)}, 0x{selectorNode.Address.Offset:X4}, {Context.GetSignatureField(target)})";
     }
 
     // ----------------------------------------------------------------------------------------------------
@@ -298,7 +324,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
             if (Context.TryResolveSamePartitionBlockEntry(node.Instruction, targetAddress) is ResolvedCfgEdge blockEntryEdge) {
                 return Transfer.Emit(blockEntryEdge, CurrentMethod);
             }
-            return EmittedCode.Diverging($"throw FailAsUntested(\"Unobserved conditional jump target at {node.Instruction.Address}\");");
+            return EmittedCode.Diverging(UntestedMessages.Jump(node.Instruction.Address));
         }
         return BuildNearRuntimeDispatch(node.Instruction, Expr(node.Ip), "jump",
             edge => Transfer.Emit(edge, CurrentMethod).AsStatements());
@@ -319,7 +345,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         if (Context.TryResolveSamePartitionBlockEntry(instruction, fallthroughAddress) is ResolvedCfgEdge blockEntryEdge) {
             return Transfer.Emit(blockEntryEdge, CurrentMethod);
         }
-        return EmittedCode.Diverging($"throw FailAsUntested(\"Unobserved conditional fallthrough at {instruction.Address}\");");
+        return EmittedCode.Diverging(UntestedMessages.ConditionalFallthrough(instruction.Address));
     }
 
     private ResolvedCfgEdge? TryResolveNearJump(JumpNearNode node) {
@@ -343,17 +369,18 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     // transfer for jumps, a call helper plus continuation for calls), so it is supplied by the caller.
     // ----------------------------------------------------------------------------------------------------
 
-    private EmittedCode BuildNearRuntimeDispatch(CfgInstruction instruction, string targetExpression, string targetKind,
+    private EmittedCode BuildNearRuntimeDispatch(CfgInstruction instruction, CSharpFragment targetExpression, string targetKind,
         Func<ResolvedCfgEdge, IReadOnlyList<StatementItem>> bodyForEdge) {
         if (!TryGetObservedDispatchEdges(instruction, targetKind, out IReadOnlyList<ResolvedCfgEdge> edges, out EmittedCode failure)) {
             return failure;
         }
+        string switchValue = Cast(DataType.UINT16, targetExpression);
         List<SwitchCase> cases = edges
             .OrderBy(edge => edge.Target.Address.Offset)
             .Select(edge => new SwitchCase($"0x{edge.Target.Address.Offset:X4}", bodyForEdge(edge)))
             .ToList();
-        List<StatementItem> defaultBody = [new LineStatement($"throw FailAsUntested($\"Unknown near {targetKind} target 0x{{((ushort)({targetExpression})):X4}} at {instruction.Address}\");", Diverges: true)];
-        return EmittedCode.Statements(new SwitchStatement($"switch ((ushort)({targetExpression}))", cases, defaultBody));
+        List<StatementItem> defaultBody = [new LineStatement(UntestedMessages.NearTarget(targetKind, switchValue, instruction.Address), Diverges: true)];
+        return EmittedCode.Statements(new SwitchStatement($"switch ({switchValue})", cases, defaultBody));
     }
 
     private EmittedCode BuildFarRuntimeDispatch(CfgInstruction instruction, CSharpFragment segmentExpression, CSharpFragment offsetExpression, string targetKind,
@@ -361,8 +388,8 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         if (!TryGetObservedDispatchEdges(instruction, $"far {targetKind}", out IReadOnlyList<ResolvedCfgEdge> edges, out EmittedCode failure)) {
             return failure;
         }
-        string segmentVariable = $"targetSegment_{instruction.Id}";
-        string offsetVariable = $"targetOffset_{instruction.Id}";
+        string segmentVariable = LocalVariableName("targetSegment");
+        string offsetVariable = LocalVariableName("targetOffset");
         List<StatementItem> items = [
             new LineStatement($"ushort {segmentVariable} = {Cast(DataType.UINT16, segmentExpression)};"),
             new LineStatement($"ushort {offsetVariable} = {Cast(DataType.UINT16, offsetExpression)};")
@@ -374,7 +401,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
                 $"if ({segmentVariable} == {Context.GetSegmentVariable(edge.Target.Address.Segment)} && {offsetVariable} == 0x{edge.Target.Address.Offset:X4})",
                 bodyForEdge(edge)));
         }
-        items.Add(new LineStatement($"throw FailAsUntested($\"Unknown far {targetKind} target {{{segmentVariable}:X4}}:{{{offsetVariable}:X4}} at {instruction.Address}\");", Diverges: true));
+        items.Add(new LineStatement(UntestedMessages.FarTarget(targetKind, segmentVariable, offsetVariable, instruction.Address), Diverges: true));
         return EmittedCode.Statements(items);
     }
 
@@ -389,7 +416,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         out IReadOnlyList<ResolvedCfgEdge> edges, out EmittedCode failure) {
         edges = Context.GetSuccessorEdges(instruction, InstructionSuccessorType.Normal);
         if (edges.Count == 0) {
-            failure = EmittedCode.Diverging($"throw FailAsUntested(\"Indirect {targetKind} at {instruction.Address} has no observed targets.\");");
+            failure = EmittedCode.Diverging(UntestedMessages.IndirectWithoutTargets(targetKind, instruction.Address));
             return false;
         }
         failure = EmittedCode.None;
@@ -451,7 +478,7 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
         EmittedCode.Diverging($"return {returnActionExpression};");
 
     public EmittedCode VisitMethodCallNode(MethodCallNode node) {
-        if (TryEmitIoPortCall(node, out string ioPortCall)) {
+        if (TryEmitIoPortHelperCall(node, out string ioPortCall)) {
             return (CSharpFragment)ioPortCall;
         }
 
@@ -461,38 +488,36 @@ internal sealed class CSharpAstEmitter : IAstVisitor<EmittedCode> {
     }
 
     /// <summary>
-    /// IN/OUT execution AST nodes are emitted as root-helper calls (In8/Out16/...) by the IO AST builder.
-    /// Those helpers do not exist on <see cref="CSharpOverrideHelper"/>, so generated overrides reach the I/O
-    /// bus through <c>Machine.IoPortDispatcher</c> instead.
+    /// IN/OUT and INS/OUTS AST nodes are root calls named <c>In8</c>...<c>Out32</c>. They are emitted as
+    /// calls to the <see cref="CSharpOverrideHelper"/> methods of the same names, with the port narrowed to
+    /// <c>ushort</c> and the OUT value narrowed to the operand width.
     /// </summary>
-    private bool TryEmitIoPortCall(MethodCallNode node, out string result) {
+    private bool TryEmitIoPortHelperCall(MethodCallNode node, out string result) {
         if (node.PropertyPath is not null) {
             result = string.Empty;
             return false;
         }
 
-        (string dispatcherMethod, DataType? valueType) = node.MethodName switch {
-            "In8" => ("ReadByte", null),
-            "In16" => ("ReadWord", null),
-            "In32" => ("ReadDWord", null),
-            "Out8" => ("WriteByte", DataType.UINT8),
-            "Out16" => ("WriteWord", DataType.UINT16),
-            "Out32" => ("WriteDWord", DataType.UINT32),
-            _ => (string.Empty, null)
+        (bool isIoHelper, DataType? valueType) = node.MethodName switch {
+            "In8" or "In16" or "In32" => (true, null),
+            "Out8" => (true, DataType.UINT8),
+            "Out16" => (true, DataType.UINT16),
+            "Out32" => (true, DataType.UINT32),
+            _ => (false, null)
         };
-        if (dispatcherMethod.Length == 0) {
+        if (!isIoHelper) {
             result = string.Empty;
             return false;
         }
 
         string port = Cast(DataType.UINT16, Expr(node.Arguments[0]));
         if (valueType is null) {
-            result = $"Machine.IoPortDispatcher.{dispatcherMethod}({port})";
+            result = $"{node.MethodName}({port})";
             return true;
         }
 
         string value = Cast(valueType, Expr(node.Arguments[1]));
-        result = $"Machine.IoPortDispatcher.{dispatcherMethod}({port}, {value})";
+        result = $"{node.MethodName}({port}, {value})";
         return true;
     }
 

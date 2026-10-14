@@ -30,11 +30,11 @@ public class CSharpAstEmitterFragmentTest {
             partitionByNode: new(),
             methodNames: new(),
             partitionBaseNames: new(),
-            labels: new(),
             segmentVariables: new(),
             transfersByEdge: new(),
             entriesByPartition: new(),
-            blockEntryByAddress: new());
+            blockEntryByAddress: new(),
+            signatureFields: []);
         return new CSharpAstEmitter(context, new TransferEmitter(context));
     }
 

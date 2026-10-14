@@ -4,9 +4,13 @@ using FluentAssertions;
 
 using Spice86.Core.Emulator.Devices.Sound;
 using Spice86.Core.Emulator.Devices.Sound.Blaster;
+using Spice86.Core.Emulator.Devices.Video;
 using Spice86.Core.Emulator.InterruptHandlers.Dos.Ems;
 using Spice86.Core.Emulator.InterruptHandlers.Dos.Xms;
+using Spice86.Core.Emulator.InterruptHandlers.Input.Mouse;
 using Spice86.Core.Emulator.Mcp;
+using Spice86.Core.Emulator.VM;
+using Spice86.Shared.Emulator.Mouse;
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
@@ -18,6 +22,86 @@ using Xunit;
 
 public class McpServerToolStateTests {
     private const string TestProgramName = "add";
+
+    [Theory]
+    [InlineData(true, 1)]
+    [InlineData(false, 0)]
+    public async Task MouseTools_ShouldReachDosMouseDriverThroughHttpAsync(bool isPressed, int expectedButtons) {
+        // Arrange
+        await using McpIntegrationContext context = await McpIntegrationContext.CreateAsync(TestProgramName);
+        await context.InitializeAsync();
+        InputEventHub hub = context.Services.InputEventHub
+            ?? throw new InvalidOperationException("Input event hub was not initialized.");
+        IMouseDriver driver = context.Spice86.Machine.MouseDriver;
+        driver.CurrentMinX = 0;
+        driver.CurrentMaxX = 639;
+        driver.CurrentMinY = 0;
+        driver.CurrentMaxY = 399;
+        hub.PostMouseButtonEvent(new MouseButtonEventArgs(MouseButton.Left, !isPressed));
+        hub.ProcessAllPendingInputEvents();
+
+        // Act
+        using JsonDocument moveResponse = await context.CallToolAsync("send_mouse_move", new Dictionary<string, object?> {
+            ["x"] = 0.25,
+            ["y"] = 0.75
+        });
+        using JsonDocument buttonResponse = await context.CallToolAsync("send_mouse_button", new Dictionary<string, object?> {
+            ["button"] = "Left",
+            ["isPressed"] = isPressed
+        });
+        hub.ProcessAllPendingInputEvents();
+
+        // Assert
+        McpJsonRpcAssertions.GetJsonRpcResult(moveResponse).TryGetProperty("isError", out JsonElement _).Should().BeFalse();
+        McpJsonRpcAssertions.GetJsonRpcResult(buttonResponse).TryGetProperty("isError", out JsonElement _).Should().BeFalse();
+        driver.CurrentMouseStatus.X.Should().Be(159);
+        driver.CurrentMouseStatus.Y.Should().Be(299);
+        driver.CurrentMouseStatus.ButtonFlags.Should().Be((ushort)expectedButtons);
+        driver.GetButtonPressCount(MouseButton.Left).Should().Be(1);
+        driver.GetButtonsReleaseCount(MouseButton.Left).Should().Be(1);
+    }
+
+    [Fact]
+    public async Task WriteMemory_ShouldReportIgnoredRomWritesThroughHttpAsync() {
+        // Arrange
+        await using McpIntegrationContext context = await McpIntegrationContext.CreateAsync(TestProgramName);
+        await context.InitializeAsync();
+        byte[] original = context.Services.Memory.ReadRam(4, 0xC1190);
+        string data = Convert.ToHexString(original.Select(value => (byte)~value).ToArray());
+
+        // Act
+        using JsonDocument response = await context.CallToolAsync("write_memory", new Dictionary<string, object?> {
+            ["segment"] = 0xB800,
+            ["offset"] = 0x9190,
+            ["data"] = data
+        });
+
+        // Assert
+        JsonElement result = McpJsonRpcAssertions.GetJsonRpcResult(response);
+        result.TryGetProperty("isError", out JsonElement isError).Should().BeTrue();
+        isError.GetBoolean().Should().BeTrue();
+        McpJsonRpcAssertions.GetToolErrorMessage(result).Should().Contain("did not persist");
+        context.Services.Memory.ReadRam(4, 0xC1190).Should().Equal(original);
+    }
+
+    [Fact]
+    public async Task DosAndMcpServices_ShouldShareEmsAndXmsManagersAsync() {
+        // Arrange
+        await using McpIntegrationContext context = await McpIntegrationContext.CreateAsync(
+            TestProgramName, enableXms: true, enableEms: true, initializeDos: true);
+
+        // Act
+        Spice86.Core.Emulator.OperatingSystem.Dos dos = context.Services.Dos
+            ?? throw new InvalidOperationException("DOS services were not initialized.");
+        ExpandedMemoryManager? emsManager = context.Services.EmsManager;
+        ExtendedMemoryManager? xmsManager = context.Services.XmsManager;
+
+        // Assert
+        context.Services.EmsManager.Should().NotBeNull();
+        emsManager.Should().BeSameAs(dos.Ems);
+        context.Services.XmsManager.Should().NotBeNull();
+        xmsManager.Should().BeSameAs(dos.Xms);
+    }
 
     [Fact]
     public async Task McpAbout_ShouldExposeDiscoverabilityMetadataAsync() {
@@ -604,6 +688,52 @@ public class McpServerToolStateTests {
         memoryModel.GetString().Should().NotBeNullOrWhiteSpace();
         McpJsonRpcAssertions.TryGetPropertyIgnoreCase(videoStructured, "rendererWidth", out JsonElement rendererWidth).Should().BeTrue();
         rendererWidth.GetInt32().Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public async Task QueryVideoState_ShouldReportPublishedLogicalGeometryWithoutChangingBiosModeAsync() {
+        // Arrange
+        await using McpIntegrationContext context = await McpIntegrationContext.CreateAsync(TestProgramName);
+        await context.InitializeAsync();
+        JsonDocument modeResponse = await context.CallToolAsync("video_set_mode", new Dictionary<string, object?> {
+            ["modeId"] = 0x13,
+            ["clearVideoMemory"] = true
+        });
+        AssertToolSucceeded(modeResponse);
+        if (context.Services.VgaRenderer is not Renderer renderer) {
+            throw new InvalidOperationException("The composed VGA renderer is required.");
+        }
+        context.Services.IoPortDispatcher.WriteWord(0x3D4, 0x0011);
+        context.Services.IoPortDispatcher.WriteWord(0x3D4, 0x3F01);
+        context.Services.IoPortDispatcher.WriteWord(0x3D4, 0x3E07);
+        context.Services.IoPortDispatcher.WriteWord(0x3D4, 0x4109);
+        context.Services.IoPortDispatcher.WriteWord(0x3D4, 0xBF12);
+        renderer.BeginFrame();
+        for (int scanline = 0; scanline < 1200; scanline++) {
+            renderer.RenderScanline();
+        }
+        renderer.CompleteFrame();
+
+        // Act
+        JsonDocument detailed = await context.CallToolAsync("read_video_state_detailed", new Dictionary<string, object?>());
+        JsonDocument basic = await context.CallToolAsync("read_video_state", new Dictionary<string, object?>());
+
+        // Assert
+        JsonElement detailedContent = GetSuccessfulStructuredContent(detailed);
+        McpJsonRpcAssertions.TryGetPropertyIgnoreCase(detailedContent, "biosVideoMode", out JsonElement biosMode).Should().BeTrue();
+        biosMode.GetInt32().Should().Be(0x13);
+        foreach ((JsonDocument response, string widthProperty, string heightProperty) in new[] {
+            (detailed, "rendererWidth", "rendererHeight"),
+            (basic, "width", "height")
+        }) {
+            JsonElement content = GetSuccessfulStructuredContent(response);
+            McpJsonRpcAssertions.TryGetPropertyIgnoreCase(content, widthProperty, out JsonElement width).Should().BeTrue();
+            width.GetInt32().Should().Be(256);
+            McpJsonRpcAssertions.TryGetPropertyIgnoreCase(content, heightProperty, out JsonElement height).Should().BeTrue();
+            height.GetInt32().Should().Be(224);
+            McpJsonRpcAssertions.TryGetPropertyIgnoreCase(content, "bufferSize", out JsonElement size).Should().BeTrue();
+            size.GetInt32().Should().Be(57344);
+        }
     }
 
     [Fact]

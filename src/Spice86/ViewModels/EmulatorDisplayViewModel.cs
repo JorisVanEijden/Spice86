@@ -90,9 +90,10 @@ public sealed partial class EmulatorDisplayViewModel : ObservableObject,
     public double MouseX { get; set; }
     public double MouseY { get; set; }
 
-    public void UpdateResolution(int videoWidth, int videoHeight) {
+    public void UpdateResolution(int videoWidth, int videoHeight, double aspectRatioCorrectionFactor) {
         _uiDispatcher.Post(() => {
             _isSettingResolution = true;
+            AspectRatioCorrectionFactor = aspectRatioCorrectionFactor;
             if (Width != videoWidth || Height != videoHeight) {
                 Width = videoWidth;
                 Height = videoHeight;
@@ -112,7 +113,6 @@ public sealed partial class EmulatorDisplayViewModel : ObservableObject,
 
     public void OnVideoModeChanged(object? sender, VideoModeChangedEventArgs e) {
         _uiDispatcher.Post(() => {
-            AspectRatioCorrectionFactor = e.AspectRatioCorrectionFactor;
             if (_loggerService.IsEnabled(LogLevel.Debug)) {
                 _loggerService.LogDebug(
                     "Video mode changed to {Width}x{Height}, aspect ratio correction factor: {Factor}",
@@ -162,10 +162,19 @@ public sealed partial class EmulatorDisplayViewModel : ObservableObject,
         if (image.Source is null || _pauseHandler.IsPaused) {
             return;
         }
-        MouseX = e.GetPosition(image).X / image.Source.Size.Width;
-        MouseY = e.GetPosition(image).Y / image.Source.Size.Height;
+        Point position = e.GetPosition(image);
+        MouseX = NormalizeMouseCoordinate(position.X, image.Source.Size.Width);
+        MouseY = NormalizeMouseCoordinate(position.Y, image.Source.Size.Height);
         MouseMoved?.Invoke(this, new MouseMoveEventArgs(MouseX, MouseY));
         UpdateShownEmulatorMouseCursorPosition();
+    }
+
+    private static double NormalizeMouseCoordinate(double position, double size) {
+        if (size <= 1) {
+            return 0;
+        }
+        // DOS mouse ranges are inclusive: the last display pixel must reach the maximum.
+        return Math.Clamp(position / (size - 1), 0.0, 1.0);
     }
 
     /// <summary>
@@ -190,7 +199,7 @@ public sealed partial class EmulatorDisplayViewModel : ObservableObject,
         }
         using ILockedFramebuffer pixels = Bitmap.Lock();
         UIRenderEventArgs args = new UIRenderEventArgs(pixels.Address,
-            pixels.RowBytes * pixels.Size.Height / 4);
+            pixels.RowBytes * pixels.Size.Height / 4, pixels.Size.Width, pixels.Size.Height, pixels.RowBytes / 4);
         RenderScreen.Invoke(this, args);
         InvalidateBitmap?.Invoke();
     }
@@ -213,4 +222,3 @@ public sealed partial class EmulatorDisplayViewModel : ObservableObject,
         }, DispatcherPriority.MaxValue);
     }
 }
-

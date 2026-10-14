@@ -58,12 +58,12 @@ public class CfgGraphReloadTest {
     /// </summary>
     public static IEnumerable<object[]> AllReloadBins => new[] {
         "add", "bcdcnv", "bitwise", "cmpneg", "control", "datatrnf", "div", "div2", "divfaultloop",
-        "externalint", "interrupt", "jmpmov", "jump1", "jump2", "linearsamesegmenteddifferent",
+        "externalint", "interrupt", "ioports", "jmpmov", "jump1", "jump2", "linearsamesegmenteddifferent",
         "lockprefix", "mul", "partition_cross_function_loop", "partition_indirect_call_jump",
         "partition_jump_into_function_middle", "partition_mixed_activation_cycle",
         "partition_multi_entry_dominated_shared", "partition_multi_entry_irreducible_shared",
-        "partition_shared_tail", "rep", "returnedterminator", "rotate", "segpr", "selfmodifycall",
-        "selfmodifyinstructions", "selfmodifyje", "selfmodifyterminator", "selfmodifyvalue", "shifts",
+        "partition_shared_tail", "rep", "returnedterminator", "romwrite", "rotate", "segpr", "selfmodifycall",
+        "selfmodifyinstructions", "selfmodifyrep", "selfmodifyje", "selfmodifyterminator", "selfmodifyvalue", "shifts",
         "sticli", "strings", "sub", "test386",
     }.Select(name => new object[] { name });
 

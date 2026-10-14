@@ -383,11 +383,14 @@ public class DosProcessManagerTests {
         sda.CurrentProgramSegmentPrefix = initialPspSegment;
         BiosDataArea biosDataArea = new(memory, 640);
         InterruptVectorTable interruptVectorTable = new(memory);
-        VgaRom vgaRom = new();
-        VgaFunctionality vgaFunctionality = new(memory, interruptVectorTable, ioPortDispatcher, biosDataArea, vgaRom, true);
+        VgaRom vgaRom = new(loggerService);
+        VgaFunctionality vgaFunctionality = new(memory, interruptVectorTable, ioPortDispatcher, biosDataArea, vgaRom, new VideoState(), true);
 
         DosDriveManager driveManager = DosTestHelpers.CreateDriveManager(loggerService, null);
-        DosMemoryManager memoryManager = new(memory, initialPspSegment, loggerService);
+        DosSysVars dosSysVars = DosTestHelpers.CreateDosSysVars(memory, loggerService,
+            configuration.ProgramEntryPointSegment);
+        DosMemoryManager memoryManager = new(memory, initialPspSegment, loggerService, dosSysVars, false, false);
+        DosTables dosTables = new(memory);
         DosCodePageState dosCodePageState = DosCodePageState.Create(850, CountryId.UnitedStates);
         DosFileManager fileManager = new(memory, new DosStringDecoder(memory, state, dosCodePageState), driveManager, loggerService, new List<IVirtualDevice>());
         IBatchDisplayCommandHandler batchDisplayCommandHandler = new DosBatchDisplayCommandHandler(vgaFunctionality);
@@ -412,6 +415,7 @@ public class DosProcessManagerTests {
             stack,
             state,
             memoryManager,
+            dosTables,
             fileManager,
             driveManager,
             driveStatusProvider,

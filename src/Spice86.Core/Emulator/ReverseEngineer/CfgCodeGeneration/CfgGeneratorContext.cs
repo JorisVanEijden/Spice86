@@ -3,47 +3,69 @@ namespace Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration;
 using Spice86.Core.Emulator.CPU.CfgCpu.ControlFlowGraph;
 using Spice86.Core.Emulator.CPU.CfgCpu.ParsedInstruction;
 using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model;
+using Spice86.Core.Emulator.ReverseEngineer.CfgCodeGeneration.Model.Plan;
 using Spice86.Core.Emulator.ReverseEngineer.FunctionPartitioning.Model;
 using Spice86.Shared.Emulator.Memory;
 
 using System.Linq;
 
 /// <summary>
-/// The shared lookup table all emitters read from: "which partition owns this node?", "what label does it
-/// have?", "what segment variable name?", "where does this edge go?". Built once during analysis, then
-/// treated as a frozen dictionary for the rest of the pipeline.
+/// The shared lookup table all emitters read from: "which partition owns this node?", "what segment variable
+/// name?", "where does this edge go?". Built once during analysis, then treated as a frozen dictionary for the
+/// rest of the pipeline.
 /// </summary>
 internal sealed class CfgGeneratorContext {
     private readonly Dictionary<ICfgNode, CfgCodePartition> _partitionByNode;
     private readonly Dictionary<CfgCodePartition, string> _methodNames;
     private readonly Dictionary<CfgCodePartition, string> _partitionBaseNames;
-    private readonly Dictionary<ICfgNode, string> _labels;
     private readonly Dictionary<ResolvedCfgEdge, CfgCodePartitionTransfer> _transfersByEdge;
     private readonly Dictionary<CfgCodePartition, IReadOnlyList<CfgCodePartitionEntry>> _entriesByPartition;
     private readonly Dictionary<SegmentedAddress, ICfgNode> _blockEntryByAddress;
+    private readonly Dictionary<CfgInstruction, string> _signatureFieldByInstruction;
 
     public CfgGeneratorContext(
         CfgPartitionedProgram program,
         Dictionary<ICfgNode, CfgCodePartition> partitionByNode,
         Dictionary<CfgCodePartition, string> methodNames,
         Dictionary<CfgCodePartition, string> partitionBaseNames,
-        Dictionary<ICfgNode, string> labels,
         Dictionary<ushort, string> segmentVariables,
         Dictionary<ResolvedCfgEdge, CfgCodePartitionTransfer> transfersByEdge,
         Dictionary<CfgCodePartition, IReadOnlyList<CfgCodePartitionEntry>> entriesByPartition,
-        Dictionary<SegmentedAddress, ICfgNode> blockEntryByAddress) {
+        Dictionary<SegmentedAddress, ICfgNode> blockEntryByAddress,
+        IReadOnlyList<SignatureFieldPlan> signatureFields) {
         Program = program;
         _partitionByNode = partitionByNode;
         _methodNames = methodNames;
         _partitionBaseNames = partitionBaseNames;
-        _labels = labels;
         SegmentVariables = segmentVariables;
         _transfersByEdge = transfersByEdge;
         _entriesByPartition = entriesByPartition;
         _blockEntryByAddress = blockEntryByAddress;
+        SignatureFields = signatureFields;
+        _signatureFieldByInstruction = signatureFields.ToDictionary(
+            field => field.Instruction,
+            field => field.FieldName);
     }
 
     public CfgPartitionedProgram Program { get; }
+
+    /// <summary>Every signature field the generated class declares, in emission order.</summary>
+    public IReadOnlyList<SignatureFieldPlan> SignatureFields { get; }
+
+    /// <summary>
+    /// The name of the generated field holding <paramref name="instruction"/>'s signature bytes.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// No field was planned for the instruction. The collection and the emission rules disagree, which is a
+    /// generator bug rather than a property of the program under test.
+    /// </exception>
+    public string GetSignatureField(CfgInstruction instruction) {
+        if (!_signatureFieldByInstruction.TryGetValue(instruction, out string? fieldName)) {
+            throw new InvalidOperationException(
+                $"No signature field was planned for instruction {instruction.Address} (id {instruction.Id}).");
+        }
+        return fieldName;
+    }
 
     public CfgCodePartition GetPartition(ICfgNode node) => _partitionByNode[node];
     public string GetMethodName(CfgCodePartition partition) => _methodNames[partition];
@@ -55,7 +77,6 @@ internal sealed class CfgGeneratorContext {
     /// address triplet and round-trips through the Ghidra symbol file without accumulating duplicates.
     /// </summary>
     public string GetPartitionBaseName(CfgCodePartition partition) => _partitionBaseNames[partition];
-    public string GetLabel(ICfgNode node) => _labels[node];
     public string GetSegmentVariable(ushort segment) => SegmentVariables[segment];
     public IReadOnlyDictionary<ushort, string> SegmentVariables { get; }
     public IReadOnlyList<CfgCodePartitionEntry> GetEntries(CfgCodePartition partition) => _entriesByPartition[partition];

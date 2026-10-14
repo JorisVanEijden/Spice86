@@ -61,7 +61,6 @@ public class CfgGeneratedOverrides : CSharpOverrideHelper {
         // F000:0022 mov byte ptr DS:[0x0012],0xCC
         UInt8[DS, 0x0012] = 0xCC;
         // F000:0027 jmp short 0x0029
-        CheckExternalEvents(cs1, 0x0029);
         // F000:0029 hlt
         return Hlt();
     }
@@ -78,32 +77,28 @@ public class CfgGeneratedOverrides : CSharpOverrideHelper {
         Alu16.Sub(BX, 0);
         // F000:0036 je short 0x0042
         if (ZeroFlag) {
-            goto label_F000_0042_F0042_15;
+            goto L_0042;
         }
-        CheckExternalEvents(cs1, 0x0038);
         // F000:0038 cmp BX,1
         Alu16.Sub(BX, 1);
         // F000:003B je short 0x0047
         if (ZeroFlag) {
-            goto label_F000_0047_F0047_22;
+            goto L_0047;
         }
-        CheckExternalEvents(cs1, 0x003D);
         // F000:003D mov AX,0x0022
         AX = 0x0022;
         // F000:0040 push AX
         Stack.Push16(AX);
         // F000:0041 ret near
         return NearRet();
-    label_F000_0047_F0047_22:
-        CheckExternalEvents(cs1, 0x0047);
+    L_0047:
         // F000:0047 mov AX,0x001B
         AX = 0x001B;
         // F000:004A push AX
         Stack.Push16(AX);
         // F000:004B ret near
         return NearRet();
-    label_F000_0042_F0042_15:
-        CheckExternalEvents(cs1, 0x0042);
+    L_0042:
         // F000:0042 mov AX,0x0014
         AX = 0x0014;
         // F000:0045 push AX
@@ -115,7 +110,6 @@ public class CfgGeneratedOverrides : CSharpOverrideHelper {
     public virtual Action unknown_F000_FFF0_FFFF0(int loadOffset) {
         CheckExternalEvents(cs1, 0xFFF0);
         // F000:FFF0 jmp short 0
-        CheckExternalEvents(cs1, 0x0000);
         // F000:0000 mov AX,0
         AX = 0;
         // F000:0003 mov DS,AX
@@ -134,7 +128,7 @@ public class CfgGeneratedOverrides : CSharpOverrideHelper {
         CheckExternalEvents(cs1, 0x0010);
         // F000:0010 call near 0x002A
         NearCall(cs1, 0x0013, unknown_F000_002A_F002A);
-        throw FailAsUntested("Call at F000:0010 returned to F000:0013, but no continuation was observed during discovery.");
+        throw FailAsUntested("Untested return from call at F000:0010");
     }
 
 }

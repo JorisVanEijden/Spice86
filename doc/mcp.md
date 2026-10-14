@@ -22,6 +22,12 @@ The HTTP transport is **stateless** by default to maximize compatibility with re
 
 ## Endpoints
 
+Video inspection and PNG captures use the last completed logical framebuffer.
+Mode 13h produces 320x200 pixels; a program can change VGA registers without
+changing the BIOS mode record (for example, 256x224 unchained graphics).
+Pixel and scanline doubling are presentation concerns, not duplicate pixels
+in the returned framebuffer. GUI graphics retain 4:3 aspect correction.
+
 | Endpoint | Description |
 |----------|-------------|
 | `http://localhost:<port>/mcp` | MCP protocol endpoint (JSON-RPC over HTTP) |
@@ -137,6 +143,10 @@ Spice86 ships with **65+ MCP tools** organized into these capability scopes:
 - `send_mouse_packet`: Send raw mouse data packet
 - `send_mouse_move`: Move mouse cursor
 - `send_mouse_button`: Press/release mouse button
+
+Mouse input follows the same emulator-thread event queue as GUI input. Queued
+events are processed when execution resumes; they do not move the DOS cursor
+while the emulator remains paused.
 
 ### DOS & BIOS Structures
 - `read_dos_psp`: Read the DOS Program Segment Prefix
